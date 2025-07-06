@@ -1,14 +1,14 @@
 /**
- * Google Apps Script 代碼 - 強化版 CORS 支援
- * 用於處理 HTML 表單提交的資料到 Google Sheets
+ * Google Apps Script 代碼 - 包含 HTML Hosting 功能
+ * 完全解決 CORS 問題的方案
  * 
  * 設置步驟：
  * 1. 打開 https://script.google.com/
  * 2. 創建新專案
  * 3. 將此代碼貼入 Code.gs 文件
- * 4. 修改下面的 SPREADSHEET_ID 為您的 Google Sheets ID
- * 5. 部署為 Web App（重要：設定為 "Anyone can access"）
- * 6. 複製 Web App URL 到前端代碼
+ * 4. 創建 HTML 文件（index.html）並將 gas-html-page.html 內容貼入
+ * 5. 修改下面的 SPREADSHEET_ID 為您的 Google Sheets ID
+ * 6. 部署為 Web App
  */
 
 // 請替換為您的 Google Sheets ID
@@ -19,231 +19,101 @@ const BOM_SHEET_NAME = 'bom';
 const MEASUREMENTS_SHEET_NAME = 'measurements';
 
 /**
- * 通用 CORS 標頭設定函數
- */
-function setCorsHeaders(response) {
-  return response
-    .setHeader('Access-Control-Allow-Origin', '*')
-    .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
-    .setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control')
-    .setHeader('Access-Control-Allow-Credentials', 'false')
-    .setHeader('Access-Control-Max-Age', '86400')
-    .setHeader('Content-Type', 'application/json; charset=UTF-8');
-}
-
-/**
- * Handle OPTIONS requests for CORS preflight
- */
-function doOptions(e) {
-  console.log('=== doOptions called for CORS preflight ===');
-  console.log('Request parameters:', e.parameter);
-  console.log('Request headers:', e);
-  
-  const response = ContentService
-    .createTextOutput('')
-    .setMimeType(ContentService.MimeType.TEXT);
-  
-  return setCorsHeaders(response);
-}
-
-/**
- * Handle GET requests (for testing and simple queries)
+ * 處理 GET 請求 - 返回 HTML 頁面
  */
 function doGet(e) {
-  console.log('=== doGet called ===');
-  console.log('Request parameters:', e.parameter);
-  
-  try {
-    const response = ContentService
-      .createTextOutput(JSON.stringify({
-        success: true,
-        message: 'Google Apps Script is running properly',
-        timestamp: new Date().toISOString(),
-        version: '2.0'
-      }))
-      .setMimeType(ContentService.MimeType.TEXT);
-    
-    return setCorsHeaders(response);
-  } catch (error) {
-    console.error('Error in doGet:', error);
-    const response = ContentService
-      .createTextOutput(JSON.stringify({
-        success: false,
-        message: 'Error in doGet: ' + error.message,
-        timestamp: new Date().toISOString()
-      }))
-      .setMimeType(ContentService.MimeType.TEXT);
-    
-    return setCorsHeaders(response);
-  }
+  console.log('=== doGet called - serving HTML page ===');
+  return HtmlService.createTemplateFromFile('index')
+    .evaluate()
+    .setTitle('Measurement & BOM Management System')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 /**
- * Handle POST requests - 主要的 API 端點
+ * 處理客戶端 API 調用
  */
-function doPost(e) {
-  console.log('=== doPost called ===');
-  console.log('Request e:', e);
-  console.log('Request parameters:', e.parameter);
-  console.log('Request postData:', e.postData);
+function handleApiCall(requestData) {
+  console.log('=== handleApiCall called ===');
+  console.log('Request data:', requestData);
   
   try {
-    // Parse request data from different sources
-    let data;
+    const action = requestData.action;
+    const table = requestData.table;
+    const data = requestData.data;
     
-    // Check if data is in URL parameters (from URL-encoded request)
-    if (e.parameter && e.parameter.data) {
-      try {
-        data = JSON.parse(e.parameter.data);
-        console.log('Parsed request data from parameter:', data);
-      } catch (parseError) {
-        console.error('JSON parse error from parameter:', parseError);
-        return createErrorResponse('Invalid JSON in parameter data: ' + parseError.message);
-      }
-    } 
-    // Check if data is in POST body (from JSON request)
-    else if (e.postData && e.postData.contents) {
-      try {
-        data = JSON.parse(e.postData.contents);
-        console.log('Parsed request data from postData:', data);
-      } catch (parseError) {
-        console.error('JSON parse error from postData:', parseError);
-        return createErrorResponse('Invalid JSON in request body: ' + parseError.message);
-      }
-    }
-    // Check if data is directly in parameters
-    else if (e.parameter && e.parameter.action) {
-      data = e.parameter;
-      console.log('Using direct parameter data:', data);
-    }
-    // No data found
-    else {
-      console.error('No request data found');
-      return createErrorResponse('No request data provided');
-    }
-    
-    const action = data.action;
-    const table = data.table;
-    const rowData = data.data;
-    
-    console.log('Request parameters:', { action, table, rowData });
+    console.log('Processing:', { action, table, data });
     
     // Validate required parameters
     if (!action) {
-      return createErrorResponse('Missing action parameter');
+      throw new Error('Missing action parameter');
     }
     
     // Handle different actions
     let result;
     switch(action) {
       case 'add':
-        if (!table || !rowData) {
-          return createErrorResponse('Missing table or data parameter');
+        if (!table || !data) {
+          throw new Error('Missing table or data parameter');
         }
         if (table === 'bom') {
-          result = addBomData(rowData);
+          result = addBomData(data);
         } else if (table === 'measurements') {
-          result = addMeasurementsData(rowData);
+          result = addMeasurementsData(data);
         } else {
-          return createErrorResponse('Invalid table type: ' + table);
+          throw new Error('Invalid table type: ' + table);
         }
         break;
         
       case 'get':
         if (!table) {
-          return createErrorResponse('Missing table parameter');
+          throw new Error('Missing table parameter');
         }
         if (table === 'bom') {
           result = getBomData();
         } else if (table === 'measurements') {
-          result = getMeasurementsData(rowData?.serial_number);
+          result = getMeasurementsData(data?.serial_number);
         } else if (table === 'bom_tree') {
           result = getBomTree();
         } else if (table === 'serial_numbers') {
           result = getSerialNumbers();
         } else {
-          return createErrorResponse('Invalid table type: ' + table);
+          throw new Error('Invalid table type: ' + table);
         }
         break;
         
       case 'update':
-        if (!table || !rowData || !rowData.id) {
-          return createErrorResponse('Missing table, data, or id parameter');
+        if (!table || !data || !data.id) {
+          throw new Error('Missing table, data, or id parameter');
         }
         if (table === 'measurements') {
-          result = updateMeasurementData(rowData);
+          result = updateMeasurementData(data);
         } else {
-          return createErrorResponse('Update not supported for table: ' + table);
+          throw new Error('Update not supported for table: ' + table);
         }
         break;
         
       case 'delete':
-        if (!table || !rowData || !rowData.id) {
-          return createErrorResponse('Missing table, data, or id parameter');
+        if (!table || !data || !data.id) {
+          throw new Error('Missing table, data, or id parameter');
         }
         if (table === 'measurements') {
-          result = deleteMeasurementData(rowData.id);
+          result = deleteMeasurementData(data.id);
         } else {
-          return createErrorResponse('Delete not supported for table: ' + table);
+          throw new Error('Delete not supported for table: ' + table);
         }
         break;
         
       default:
-        return createErrorResponse('Invalid action: ' + action);
+        throw new Error('Invalid action: ' + action);
     }
     
     console.log('Operation result:', result);
-    return createSuccessResponse('Operation completed successfully', result);
+    return result;
     
   } catch (error) {
-    console.error('Unexpected error in doPost:', error);
-    console.error('Error stack:', error.stack);
-    return createErrorResponse('Server error: ' + error.message + (error.stack ? ' | Stack: ' + error.stack : ''));
+    console.error('Error in handleApiCall:', error);
+    throw error;
   }
-}
-
-/**
- * Create success response with CORS headers
- */
-function createSuccessResponse(message, data = null) {
-  const response = {
-    success: true,
-    message: message,
-    timestamp: new Date().toISOString()
-  };
-  
-  if (data !== null && data !== undefined) {
-    response.data = data;
-  }
-  
-  const jsonResponse = JSON.stringify(response);
-  console.log('Creating success response:', jsonResponse);
-  
-  const contentResponse = ContentService
-    .createTextOutput(jsonResponse)
-    .setMimeType(ContentService.MimeType.TEXT);
-  
-  return setCorsHeaders(contentResponse);
-}
-
-/**
- * Create error response with CORS headers
- */
-function createErrorResponse(message) {
-  const response = {
-    success: false,
-    message: message,
-    timestamp: new Date().toISOString()
-  };
-  
-  const jsonResponse = JSON.stringify(response);
-  console.log('Creating error response:', jsonResponse);
-  
-  const contentResponse = ContentService
-    .createTextOutput(jsonResponse)
-    .setMimeType(ContentService.MimeType.TEXT);
-  
-  return setCorsHeaders(contentResponse);
 }
 
 /**
@@ -292,7 +162,7 @@ function addBomData(data) {
 }
 
 /**
- * Add Measurements data
+ * Add measurements data
  */
 function addMeasurementsData(data) {
   try {
@@ -332,7 +202,7 @@ function addMeasurementsData(data) {
     
   } catch (error) {
     console.error('Error in addMeasurementsData:', error);
-    throw new Error('Unable to add Measurements data: ' + error.message);
+    throw new Error('Unable to add measurements data: ' + error.message);
   }
 }
 
@@ -443,39 +313,39 @@ function getBomTree() {
         };
       }
       
-      tree[partNo].serial_numbers.push(serialNumber);
+      // Add serial number to part
+      if (!tree[partNo].serial_numbers.includes(serialNumber)) {
+        tree[partNo].serial_numbers.push(serialNumber);
+      }
       
-      // If has assembly serial number, build parent-child relationship
-      if (assemblySerialNumber) {
-        const parentPartNo = serialToPartMap[assemblySerialNumber];
-        if (parentPartNo) {
-          if (!tree[parentPartNo]) {
-            tree[parentPartNo] = {
-              part_no: parentPartNo,
-              serial_numbers: [],
-              children: {}
-            };
-          }
-          tree[parentPartNo].children[partNo] = tree[partNo];
+      // Handle assembly relationships
+      if (assemblySerialNumber && serialToPartMap[assemblySerialNumber]) {
+        const assemblyPartNo = serialToPartMap[assemblySerialNumber];
+        
+        if (!tree[assemblyPartNo]) {
+          tree[assemblyPartNo] = {
+            part_no: assemblyPartNo,
+            serial_numbers: [],
+            children: {}
+          };
+        }
+        
+        // Add current part as child of assembly part
+        tree[assemblyPartNo].children[partNo] = tree[partNo];
+      }
+    });
+    
+    // Remove child parts from root level
+    bomData.forEach(item => {
+      if (item.assembly_serial_number && serialToPartMap[item.assembly_serial_number]) {
+        const assemblyPartNo = serialToPartMap[item.assembly_serial_number];
+        if (tree[assemblyPartNo] && tree[assemblyPartNo].children[item.part_no]) {
+          delete tree[item.part_no];
         }
       }
     });
     
-    // Remove items that have become child nodes
-    const rootNodes = {};
-    Object.keys(tree).forEach(partNo => {
-      let isRoot = true;
-      Object.keys(tree).forEach(parentPartNo => {
-        if (tree[parentPartNo].children[partNo]) {
-          isRoot = false;
-        }
-      });
-      if (isRoot) {
-        rootNodes[partNo] = tree[partNo];
-      }
-    });
-    
-    return rootNodes;
+    return tree;
     
   } catch (error) {
     console.error('Error getting BOM tree:', error);
@@ -484,14 +354,13 @@ function getBomTree() {
 }
 
 /**
- * Get all serial numbers
+ * Get serial numbers
  */
 function getSerialNumbers() {
   try {
-    const measurements = getMeasurementsData();
-    const serialNumbers = [...new Set(measurements.map(m => m.serial_number))];
+    const measurementsData = getMeasurementsData();
+    const serialNumbers = [...new Set(measurementsData.map(m => m.serial_number))];
     return serialNumbers.sort();
-    
   } catch (error) {
     console.error('Error getting serial numbers:', error);
     throw new Error('Unable to retrieve serial numbers: ' + error.message);
@@ -499,7 +368,7 @@ function getSerialNumbers() {
 }
 
 /**
- * Update Measurement data
+ * Update measurement data
  */
 function updateMeasurementData(data) {
   try {
@@ -512,42 +381,31 @@ function updateMeasurementData(data) {
     
     const allData = sheet.getDataRange().getValues();
     const headers = allData[0];
+    const idIndex = headers.indexOf('id');
+    const paraNameIndex = headers.indexOf('para_name');
+    const paraValueIndex = headers.indexOf('para_value');
     
-    // Find the row to update
-    let targetRow = -1;
-    let originalSerialNumber = null;
+    if (idIndex === -1 || paraNameIndex === -1 || paraValueIndex === -1) {
+      throw new Error('Required columns not found');
+    }
+    
+    // Find the row with matching ID
     for (let i = 1; i < allData.length; i++) {
-      if (allData[i][0] == data.id) { // id is in the first column
-        targetRow = i + 1; // Convert to 1-based index
-        originalSerialNumber = allData[i][1]; // serial_number is in the second column
-        break;
+      if (allData[i][idIndex] == data.id) {
+        // Update the row
+        sheet.getRange(i + 1, paraNameIndex + 1).setValue(data.para_name);
+        sheet.getRange(i + 1, paraValueIndex + 1).setValue(data.para_value);
+        
+        return {
+          id: data.id,
+          table: 'measurements',
+          row: i + 1,
+          updated: true
+        };
       }
     }
     
-    if (targetRow === -1) {
-      throw new Error('Record not found with ID: ' + data.id);
-    }
-    
-    // Update data - keep original serial number if not provided
-    const updatedValues = [
-      data.id,
-      data.serial_number || originalSerialNumber,
-      data.para_name,
-      data.para_value,
-      new Date().toISOString()
-    ];
-    
-    console.log('Updating row', targetRow, 'with values:', updatedValues);
-    sheet.getRange(targetRow, 1, 1, 5).setValues([updatedValues]);
-    
-    return {
-      id: data.id,
-      updated: true,
-      row: targetRow,
-      serial_number: updatedValues[1],
-      para_name: updatedValues[2],
-      para_value: updatedValues[3]
-    };
+    throw new Error('Measurement with ID ' + data.id + ' not found');
     
   } catch (error) {
     console.error('Error updating measurement data:', error);
@@ -556,7 +414,7 @@ function updateMeasurementData(data) {
 }
 
 /**
- * Delete Measurement data
+ * Delete measurement data
  */
 function deleteMeasurementData(id) {
   try {
@@ -568,28 +426,29 @@ function deleteMeasurementData(id) {
     }
     
     const allData = sheet.getDataRange().getValues();
+    const headers = allData[0];
+    const idIndex = headers.indexOf('id');
     
-    // Find the row to delete
-    let targetRow = -1;
+    if (idIndex === -1) {
+      throw new Error('ID column not found');
+    }
+    
+    // Find the row with matching ID
     for (let i = 1; i < allData.length; i++) {
-      if (allData[i][0] == id) { // id is in the first column
-        targetRow = i + 1; // Convert to 1-based index
-        break;
+      if (allData[i][idIndex] == id) {
+        // Delete the row
+        sheet.deleteRow(i + 1);
+        
+        return {
+          id: id,
+          table: 'measurements',
+          row: i + 1,
+          deleted: true
+        };
       }
     }
     
-    if (targetRow === -1) {
-      throw new Error('Record not found');
-    }
-    
-    // Delete row
-    sheet.deleteRow(targetRow);
-    
-    return {
-      id: id,
-      deleted: true,
-      row: targetRow
-    };
+    throw new Error('Measurement with ID ' + id + ' not found');
     
   } catch (error) {
     console.error('Error deleting measurement data:', error);

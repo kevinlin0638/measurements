@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BOM and Measurements Management System</title>
+    <title>Measurement & BOM Management System</title>
     <style>
         * {
-            box-sizing: border-box;
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
         }
 
         body {
@@ -19,16 +19,16 @@
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 1200px;
             margin: 0 auto;
             background: white;
             border-radius: 15px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
             overflow: hidden;
         }
 
         .header {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             padding: 30px;
             text-align: center;
@@ -37,17 +37,18 @@
         .header h1 {
             font-size: 2.5em;
             margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
         }
 
         .header p {
-            font-size: 1.1em;
+            font-size: 1.2em;
             opacity: 0.9;
         }
 
         .tabs {
             display: flex;
             background: #f8f9fa;
-            border-bottom: 2px solid #dee2e6;
+            border-bottom: 1px solid #e9ecef;
         }
 
         .tab {
@@ -55,20 +56,23 @@
             padding: 20px;
             text-align: center;
             cursor: pointer;
-            font-weight: 600;
+            border: none;
+            background: transparent;
             font-size: 1.1em;
+            font-weight: 600;
+            color: #666;
             transition: all 0.3s ease;
-            border-bottom: 3px solid transparent;
-        }
-
-        .tab.active {
-            background: white;
-            color: #4facfe;
-            border-bottom-color: #4facfe;
         }
 
         .tab:hover {
             background: #e9ecef;
+            color: #333;
+        }
+
+        .tab.active {
+            background: white;
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
         }
 
         .tab-content {
@@ -80,202 +84,159 @@
             display: block;
         }
 
-        /* Input Tab Styles */
-        .input-section {
-            background: #f8f9fa;
-            margin-bottom: 30px;
-            padding: 30px;
-            border-radius: 10px;
-            border-left: 5px solid #4facfe;
-        }
-
-        .input-section h2 {
-            color: #333;
-            margin-bottom: 20px;
-            font-size: 1.8em;
-        }
-
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 25px;
         }
 
-        label {
+        .form-group label {
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
-            color: #555;
+            color: #333;
         }
 
-        input[type="text"],
-        input[type="number"],
-        select {
+        .form-group input,
+        .form-group select {
             width: 100%;
             padding: 12px;
-            border: 2px solid #e0e0e0;
+            border: 2px solid #e9ecef;
             border-radius: 8px;
             font-size: 16px;
             transition: border-color 0.3s ease;
         }
 
-        input[type="text"]:focus,
-        input[type="number"]:focus,
-        select:focus {
+        .form-group input:focus,
+        .form-group select:focus {
             outline: none;
-            border-color: #4facfe;
-            box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.1);
-        }
-
-        .required {
-            color: #e74c3c;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
         .btn {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 15px 30px;
+            padding: 12px 30px;
             border: none;
             border-radius: 8px;
+            cursor: pointer;
             font-size: 16px;
             font-weight: 600;
-            cursor: pointer;
             transition: all 0.3s ease;
-            text-transform: uppercase;
-            letter-spacing: 1px;
             margin-right: 10px;
-            margin-bottom: 10px;
         }
 
         .btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(79, 172, 254, 0.3);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
         }
 
-        .btn.btn-secondary {
+        .btn-secondary {
             background: #6c757d;
         }
 
-        .btn.btn-danger {
-            background: #dc3545;
-        }
-
-        .btn.btn-warning {
+        .btn-warning {
             background: #ffc107;
             color: #212529;
         }
 
-        .btn.btn-success {
-            background: #28a745;
-        }
-
-        .btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        /* Measurements Input */
-        .measurements-container {
-            border: 2px solid #e9ecef;
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 20px;
+        .btn-danger {
+            background: #dc3545;
         }
 
         .measurement-item {
-            display: flex;
-            gap: 15px;
-            align-items: center;
-            margin-bottom: 15px;
-            padding: 15px;
             background: #f8f9fa;
+            border: 1px solid #e9ecef;
             border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            position: relative;
         }
 
-        .measurement-item input {
+        .measurement-row {
+            display: flex;
+            gap: 15px;
+            align-items: end;
+        }
+
+        .measurement-row .form-group {
             flex: 1;
             margin-bottom: 0;
         }
 
-        .measurement-item button {
-            padding: 10px 15px;
-            font-size: 14px;
+        .remove-measurement {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
-        /* Query Tab Styles */
-        .bom-tree {
-            background: #f8f9fa;
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 20px;
+        .add-measurement {
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
         }
 
         .tree-node {
+            margin-left: 20px;
             margin-bottom: 10px;
         }
 
         .tree-item {
-            display: flex;
-            align-items: center;
-            padding: 10px;
-            background: white;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
             border-radius: 8px;
-            margin-bottom: 5px;
+            padding: 15px;
             cursor: pointer;
             transition: all 0.3s ease;
-            border-left: 4px solid #4facfe;
         }
 
         .tree-item:hover {
             background: #e9ecef;
-        }
-
-        .tree-item.active {
-            background: #4facfe;
-            color: white;
+            transform: translateX(5px);
         }
 
         .tree-icon {
             margin-right: 10px;
-            font-size: 14px;
-        }
-
-        .tree-children {
-            margin-left: 30px;
-            display: none;
-        }
-
-        .tree-children.expanded {
-            display: block;
+            font-size: 1.2em;
         }
 
         .serial-numbers {
-            margin-left: 50px;
             margin-top: 10px;
+            margin-left: 20px;
+            display: none;
         }
 
         .serial-item {
-            padding: 8px 15px;
-            background: #e9ecef;
-            border-radius: 5px;
+            background: #e7f3ff;
+            border: 1px solid #b6d7ff;
+            border-radius: 6px;
+            padding: 10px;
             margin-bottom: 5px;
             cursor: pointer;
             transition: all 0.3s ease;
         }
 
         .serial-item:hover {
-            background: #dee2e6;
+            background: #d1ecf1;
+            transform: scale(1.02);
         }
 
-        .serial-item.active {
-            background: #28a745;
-            color: white;
-        }
-
-        .measurements-details {
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
-            margin-top: 20px;
+        .tree-children {
+            margin-left: 20px;
+            margin-top: 10px;
+            display: none;
         }
 
         .measurements-table {
@@ -287,21 +248,20 @@
         .measurements-table th,
         .measurements-table td {
             padding: 12px;
+            border: 1px solid #e9ecef;
             text-align: left;
-            border-bottom: 1px solid #dee2e6;
         }
 
         .measurements-table th {
             background: #f8f9fa;
             font-weight: 600;
-            color: #555;
+            color: #333;
         }
 
         .measurements-table tr:hover {
             background: #f8f9fa;
         }
 
-        /* Modal Styles */
         .modal {
             display: none;
             position: fixed;
@@ -310,7 +270,7 @@
             top: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.5);
+            background: rgba(0, 0, 0, 0.5);
         }
 
         .modal-content {
@@ -318,29 +278,29 @@
             margin: 15% auto;
             padding: 30px;
             border-radius: 15px;
-            width: 80%;
-            max-width: 600px;
-            position: relative;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
         }
 
         .close {
-            position: absolute;
-            right: 20px;
-            top: 20px;
-            font-size: 30px;
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
             cursor: pointer;
-            color: #999;
         }
 
         .close:hover {
-            color: #555;
+            color: #000;
         }
 
         .message {
             padding: 15px;
-            margin: 20px 0;
+            margin-bottom: 20px;
             border-radius: 8px;
-            display: none;
+            font-weight: 600;
+            text-align: center;
         }
 
         .message.success {
@@ -361,9 +321,13 @@
             padding: 20px;
         }
 
+        .loading.show {
+            display: block;
+        }
+
         .spinner {
             border: 4px solid #f3f3f3;
-            border-top: 4px solid #4facfe;
+            border-top: 4px solid #667eea;
             border-radius: 50%;
             width: 40px;
             height: 40px;
@@ -376,27 +340,43 @@
             100% { transform: rotate(360deg); }
         }
 
-        .note {
-            background: #fff3cd;
-            color: #856404;
-            padding: 15px;
+        .section {
+            background: #f8f9fa;
             border-radius: 8px;
-            margin: 20px 0;
-            border-left: 4px solid #ffc107;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+
+        .section h3 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.4em;
         }
 
         @media (max-width: 768px) {
-            .measurement-item {
+            .container {
+                margin: 10px;
+                border-radius: 10px;
+            }
+            
+            .header {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .tab-content {
+                padding: 20px;
+            }
+            
+            .measurement-row {
                 flex-direction: column;
             }
             
-            .measurement-item input {
-                margin-bottom: 10px;
-            }
-            
-            .modal-content {
-                width: 95%;
-                margin: 10% auto;
+            .measurement-row .form-group {
+                margin-bottom: 15px;
             }
         }
     </style>
@@ -404,90 +384,83 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>BOM and Measurements Management System</h1>
-            <p>Manage Bill of Materials and Measurement Data</p>
+            <h1>📊 Measurement & BOM Management</h1>
+            <p>Professional Data Management System</p>
         </div>
 
         <div class="tabs">
-            <div class="tab active" onclick="switchTab(0)">
-                📝 Data Input
-            </div>
-            <div class="tab" onclick="switchTab(1)">
-                🔍 Query & Update
-            </div>
+            <button class="tab active" onclick="showTab('dataInput')">Data Input</button>
+            <button class="tab" onclick="showTab('queryUpdate')">Query & Update</button>
         </div>
 
-        <!-- Input Tab -->
-        <div class="tab-content active" id="inputTab">
-            <div class="note">
-                <strong>Usage Instructions:</strong>
-                <ul style="margin-top: 10px; padding-left: 20px;">
-                    <li>Start by entering measurements for a serial number</li>
-                    <li>You can add multiple measurements for the same serial number</li>
-                    <li>After measurements are entered, you can create BOM relationships</li>
-                    <li>Values can be any text or number</li>
-                </ul>
-            </div>
-
-            <!-- Measurements Input Section -->
-            <div class="input-section">
-                <h2>📊 Measurements Input</h2>
-                <div class="form-group">
-                    <label for="serialNumber">Serial Number <span class="required">*</span></label>
-                    <input type="text" id="serialNumber" placeholder="Enter serial number">
-                </div>
-
-                <div class="measurements-container">
-                    <h3>Measurements</h3>
-                    <div id="measurementsContainer">
+        <div id="dataInput" class="tab-content active">
+            <div class="section">
+                <h3>📝 Measurement Data Entry</h3>
+                <form id="measurementForm">
+                    <div class="form-group">
+                        <label for="serialNumber">Serial Number</label>
+                        <input type="text" id="serialNumber" name="serialNumber" placeholder="Enter serial number" required>
+                    </div>
+                    
+                    <div id="measurementInputs">
                         <div class="measurement-item">
-                            <input type="text" placeholder="Parameter Name" class="param-name">
-                            <input type="text" placeholder="Parameter Value" class="param-value">
-                            <button type="button" class="btn btn-danger" onclick="removeMeasurement(this)">Remove</button>
+                            <div class="measurement-row">
+                                <div class="form-group">
+                                    <label>Parameter Name</label>
+                                    <input type="text" class="param-name" placeholder="Enter parameter name">
+                                </div>
+                                <div class="form-group">
+                                    <label>Parameter Value</label>
+                                    <input type="text" class="param-value" placeholder="Enter parameter value">
+                                </div>
+                                <button type="button" class="remove-measurement" onclick="removeMeasurement(this)">×</button>
+                            </div>
                         </div>
                     </div>
-                    <button type="button" class="btn btn-secondary" onclick="addMeasurement()">Add Measurement</button>
-                </div>
-
-                <button type="button" class="btn" onclick="submitMeasurements()">Submit Measurements</button>
+                    
+                    <button type="button" class="add-measurement" onclick="addMeasurement()">+ Add Measurement</button>
+                    <br><br>
+                    <button type="button" class="btn" onclick="submitMeasurements()">Submit Measurements</button>
+                </form>
             </div>
 
-            <!-- BOM Input Section -->
-            <div class="input-section">
-                <h2>📋 BOM Input</h2>
-                <div class="form-group">
-                    <label for="bomPartNo">Part Number <span class="required">*</span></label>
-                    <input type="text" id="bomPartNo" placeholder="Enter part number">
-                </div>
-                <div class="form-group">
-                    <label for="bomSerialNumber">Serial Number <span class="required">*</span></label>
-                    <select id="bomSerialNumber">
-                        <option value="">Select a serial number</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="bomAssemblySerialNumber">Assembly Serial Number <small>(Optional for root parts)</small></label>
-                    <select id="bomAssemblySerialNumber">
-                        <option value="">Select assembly serial number</option>
-                    </select>
-                </div>
-                <button type="button" class="btn" onclick="submitBOM()">Submit BOM</button>
+            <div class="section">
+                <h3>📦 BOM Data Entry</h3>
+                <form id="bomForm">
+                    <div class="form-group">
+                        <label for="bomPartNo">Part Number</label>
+                        <input type="text" id="bomPartNo" name="bomPartNo" placeholder="Enter part number" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="bomSerialNumber">Serial Number</label>
+                        <select id="bomSerialNumber" name="bomSerialNumber" required>
+                            <option value="">Select a serial number</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="bomAssemblySerialNumber">Assembly Serial Number (Optional)</label>
+                        <select id="bomAssemblySerialNumber" name="bomAssemblySerialNumber">
+                            <option value="">Select assembly serial number</option>
+                        </select>
+                    </div>
+                    
+                    <button type="button" class="btn" onclick="submitBOM()">Submit BOM</button>
+                </form>
             </div>
         </div>
 
-        <!-- Query Tab -->
-        <div class="tab-content" id="queryTab">
-            <div class="input-section">
-                <h2>🌳 BOM Tree Structure</h2>
-                <button type="button" class="btn btn-secondary" onclick="loadBOMTree()">Refresh BOM Tree</button>
-                <div class="bom-tree" id="bomTree">
-                    <p>Click "Refresh BOM Tree" to load the structure...</p>
-                </div>
+        <div id="queryUpdate" class="tab-content">
+            <div class="section">
+                <h3>🔍 BOM Tree Structure</h3>
+                <button type="button" class="btn" onclick="loadBOMTree()">Load BOM Tree</button>
+                <div id="bomTree" style="margin-top: 20px;"></div>
             </div>
 
-            <div class="measurements-details" id="measurementsDetails" style="display: none;">
-                <h3>Measurements for Serial Number: <span id="currentSerialNumber"></span></h3>
-                <table class="measurements-table" id="measurementsTable">
+            <div id="measurementsDetails" class="section" style="display: none;">
+                <h3>📊 Measurements for Serial Number: <span id="currentSerialNumber"></span></h3>
+                <table id="measurementsTable" class="measurements-table">
                     <thead>
                         <tr>
                             <th>Parameter Name</th>
@@ -500,75 +473,95 @@
                 </table>
             </div>
         </div>
+    </div>
 
-        <!-- Messages and Loading -->
-        <div class="message" id="message"></div>
-        <div class="loading" id="loading">
-            <div class="spinner"></div>
-            <p>Processing...</p>
-        </div>
+    <!-- Loading indicator -->
+    <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <p>Processing...</p>
     </div>
 
     <!-- Edit Modal -->
     <div id="editModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeModal()">&times;</span>
-            <h2>Edit Measurement</h2>
+            <h3>Edit Measurement</h3>
             <div class="form-group">
-                <label for="editParamName">Parameter Name <span class="required">*</span></label>
-                <input type="text" id="editParamName">
+                <label for="editParamName">Parameter Name</label>
+                <input type="text" id="editParamName" placeholder="Enter parameter name">
             </div>
             <div class="form-group">
-                <label for="editParamValue">Parameter Value <span class="required">*</span></label>
-                <input type="text" id="editParamValue">
+                <label for="editParamValue">Parameter Value</label>
+                <input type="text" id="editParamValue" placeholder="Enter parameter value">
             </div>
-            <button type="button" class="btn btn-success" onclick="updateMeasurement()">Update</button>
+            <button type="button" class="btn" onclick="updateMeasurement()">Update</button>
             <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
         </div>
     </div>
 
     <script>
-        // API Configuration
-        const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwQ017GaIvq5G-bwH5kKL0eoz07j3JFSa_sKvitGW4h4TQ6rmFyZ_eaETSPFXqY68Nd/exec';
-        
         let currentEditId = null;
         let serialNumbers = [];
 
         // Tab switching
-        function switchTab(tabIndex) {
-            // Remove active class from all tabs and content
+        function showTab(tabName) {
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             
-            // Add active class to selected tab and content
-            document.querySelectorAll('.tab')[tabIndex].classList.add('active');
-            document.querySelectorAll('.tab-content')[tabIndex].classList.add('active');
-            
-            // Load serial numbers when switching to input tab
-            if (tabIndex === 0) {
-                loadSerialNumbers();
-            }
+            event.target.classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+        }
+
+        // Loading indicator
+        function showLoading(show) {
+            document.getElementById('loading').classList.toggle('show', show);
         }
 
         // Message display
-        function showMessage(message, type) {
-            const messageDiv = document.getElementById('message');
-            messageDiv.textContent = message;
+        function showMessage(message, type = 'success') {
+            const existingMessage = document.querySelector('.message');
+            if (existingMessage) {
+                existingMessage.remove();
+            }
+            
+            const messageDiv = document.createElement('div');
             messageDiv.className = `message ${type}`;
-            messageDiv.style.display = 'block';
+            messageDiv.textContent = message;
+            
+            document.body.insertBefore(messageDiv, document.body.firstChild);
             
             setTimeout(() => {
-                messageDiv.style.display = 'none';
+                messageDiv.remove();
             }, 5000);
         }
 
-        // Loading display
-        function showLoading(show) {
-            const loading = document.getElementById('loading');
-            loading.style.display = show ? 'block' : 'none';
+        // Measurement management
+        function addMeasurement() {
+            const container = document.getElementById('measurementInputs');
+            const measurementItem = document.createElement('div');
+            measurementItem.className = 'measurement-item';
+            measurementItem.innerHTML = `
+                <div class="measurement-row">
+                    <div class="form-group">
+                        <label>Parameter Name</label>
+                        <input type="text" class="param-name" placeholder="Enter parameter name">
+                    </div>
+                    <div class="form-group">
+                        <label>Parameter Value</label>
+                        <input type="text" class="param-value" placeholder="Enter parameter value">
+                    </div>
+                    <button type="button" class="remove-measurement" onclick="removeMeasurement(this)">×</button>
+                </div>
+            `;
+            container.appendChild(measurementItem);
         }
 
-        // Enhanced API call function with better CORS handling
+        function removeMeasurement(button) {
+            const measurementItem = button.closest('.measurement-item');
+            measurementItem.remove();
+        }
+
+        // API calls using Google Apps Script
         async function apiCall(action, table, data = null) {
             const requestData = {
                 action: action,
@@ -579,110 +572,27 @@
             console.log('API Call:', requestData);
             
             try {
-                // Use URL-encoded format for better Google Apps Script compatibility
-                const formData = new FormData();
-                formData.append('data', JSON.stringify(requestData));
+                // Use Google Apps Script's built-in server-side function
+                const result = await google.script.run
+                    .withSuccessHandler(function(result) {
+                        console.log('API Success:', result);
+                        return result;
+                    })
+                    .withFailureHandler(function(error) {
+                        console.error('API Error:', error);
+                        throw new Error(error.message);
+                    })
+                    .handleApiCall(requestData);
                 
-                const response = await fetch(GAS_WEB_APP_URL, {
-                    method: 'POST',
-                    body: formData,
-                    mode: 'cors',
-                    cache: 'no-cache',
-                    redirect: 'follow'
-                });
-                
-                console.log('Response status:', response.status);
-                console.log('Response headers:', response.headers);
-                
-                // Check if response is ok
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const text = await response.text();
-                console.log('Response text:', text);
-                
-                // Try to parse JSON
-                let result;
-                try {
-                    result = JSON.parse(text);
-                } catch (parseError) {
-                    console.error('JSON parse error:', parseError);
-                    throw new Error('Invalid JSON response: ' + text);
-                }
-                
-                console.log('Parsed result:', result);
-                
-                if (result.success) {
-                    return result.data;
-                } else {
-                    throw new Error(result.message || 'Unknown error');
-                }
+                return result;
                 
             } catch (error) {
                 console.error('API Error:', error);
-                
-                // Enhanced error handling
-                if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                    throw new Error('Network error: Please check your internet connection and try again.');
-                } else if (error.message.includes('CORS')) {
-                    throw new Error('CORS error: Please ensure Google Apps Script is deployed correctly.');
-                } else {
-                    throw error;
-                }
-            }
-        }
-        
-        // Test API connection
-        async function testApiConnection() {
-            try {
-                console.log('Testing API connection...');
-                const response = await fetch(GAS_WEB_APP_URL, {
-                    method: 'GET',
-                    mode: 'cors',
-                    cache: 'no-cache'
-                });
-                
-                const text = await response.text();
-                const result = JSON.parse(text);
-                
-                console.log('API connection test result:', result);
-                
-                if (result.success) {
-                    console.log('✅ API connection successful');
-                    return true;
-                } else {
-                    console.log('❌ API connection failed:', result.message);
-                    return false;
-                }
-            } catch (error) {
-                console.error('❌ API connection test failed:', error);
-                return false;
+                throw error;
             }
         }
 
-        // Measurements management
-        function addMeasurement() {
-            const container = document.getElementById('measurementsContainer');
-            const newMeasurement = document.createElement('div');
-            newMeasurement.className = 'measurement-item';
-            newMeasurement.innerHTML = `
-                <input type="text" placeholder="Parameter Name" class="param-name">
-                <input type="text" placeholder="Parameter Value" class="param-value">
-                <button type="button" class="btn btn-danger" onclick="removeMeasurement(this)">Remove</button>
-            `;
-            container.appendChild(newMeasurement);
-        }
-
-        function removeMeasurement(button) {
-            const measurementItems = document.querySelectorAll('.measurement-item');
-            if (measurementItems.length > 1) {
-                button.parentElement.remove();
-            } else {
-                showMessage('At least one measurement is required', 'error');
-            }
-        }
-
+        // Submit measurements
         async function submitMeasurements() {
             const serialNumber = document.getElementById('serialNumber').value.trim();
             if (!serialNumber) {
@@ -992,13 +902,7 @@
         }
 
         // Initialize
-        window.addEventListener('load', async () => {
-            // Test API connection first
-            const isConnected = await testApiConnection();
-            if (!isConnected) {
-                showMessage('⚠️ Warning: API connection failed. Please check Google Apps Script deployment.', 'error');
-            }
-            
+        window.addEventListener('load', () => {
             loadSerialNumbers();
             
             // Close modal when clicking outside
