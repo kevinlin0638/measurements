@@ -137,6 +137,109 @@
             color: white;
         }
 
+        /* Custom multi-select styles */
+        .multi-select-container {
+            position: relative;
+        }
+
+        .multi-select-search {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+            background-color: white;
+        }
+
+        .multi-select-search:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .multi-select-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+            margin-top: 4px;
+        }
+
+        .multi-select-dropdown.show {
+            display: block;
+        }
+
+        .multi-select-option {
+            padding: 10px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background-color 0.2s ease;
+        }
+
+        .multi-select-option:hover {
+            background-color: #f8f9fa;
+        }
+
+        .multi-select-option.selected {
+            background-color: #667eea;
+            color: white;
+        }
+
+        .multi-select-option.selected:hover {
+            background-color: #5a6fd8;
+        }
+
+        .multi-select-option:last-child {
+            border-bottom: none;
+        }
+
+        .multi-select-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+            min-height: 20px;
+        }
+
+        .multi-select-tag {
+            background: #667eea;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .multi-select-tag .remove-tag {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 0;
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+
+        .multi-select-tag .remove-tag:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
         .btn {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -434,11 +537,15 @@
                     
                     <div class="form-group">
                         <label for="assemblySerialNumbers">Assembly Serial Numbers (Multiple Selection)</label>
-                        <select id="assemblySerialNumbers" name="assemblySerialNumbers" multiple style="height: 120px;">
-                            <option value="">Loading...</option>
-                        </select>
+                        <div class="multi-select-container">
+                            <input type="text" id="assemblySerialSearch" class="multi-select-search" placeholder="Search and select assembly serial numbers..." autocomplete="off">
+                            <div id="assemblySerialDropdown" class="multi-select-dropdown">
+                                <div class="multi-select-option">Loading...</div>
+                            </div>
+                            <div id="assemblySerialTags" class="multi-select-tags"></div>
+                        </div>
                         <small style="color: #666; font-size: 0.9em; margin-top: 5px; display: block;">
-                            Hold Ctrl (Windows) or Cmd (Mac) to select multiple items
+                            Type to search, click to select/deselect items
                         </small>
                     </div>
                     
@@ -460,7 +567,7 @@
                     
                     <button type="button" class="add-measurement" onclick="addMeasurement()">+ Add Measurement</button>
                     <br><br>
-                    <button type="button" class="btn" onclick="submitEnhancedMeasurements()">Submit Measurements & Create BOM Links</button>
+                    <button type="button" class="btn" onclick="submitEnhancedMeasurements()">Submit Data & Create BOM Links</button>
                 </form>
             </div>
         </div>
@@ -516,6 +623,8 @@
     <script>
         let currentEditId = null;
         let serialNumbers = [];
+        let selectedAssemblySerials = [];
+        let multiSelectInitialized = false;
 
         // Tab switching
         function showTab(tabName) {
@@ -609,8 +718,7 @@
         async function submitEnhancedMeasurements() {
             const partNo = document.getElementById('partNo').value.trim();
             const serialNumber = document.getElementById('serialNumber').value.trim();
-            const assemblySerialNumbers = Array.from(document.getElementById('assemblySerialNumbers').selectedOptions, 
-                option => option.value).filter(value => value !== '');
+            const assemblySerialNumbers = selectedAssemblySerials.filter(sn => sn !== '');
 
             if (!partNo || !serialNumber) {
                 showMessage('Please enter part number and serial number', 'error');
@@ -634,57 +742,93 @@
                 }
             }
 
-            if (measurements.length === 0) {
-                showMessage('Please enter at least one measurement', 'error');
+            const hasMeasurements = measurements.length > 0;
+            const hasBomLinks = assemblySerialNumbers.length > 0;
+
+            if (!hasMeasurements && !hasBomLinks) {
+                showMessage('Please enter at least one measurement or select assembly serial numbers for BOM linking', 'error');
                 return;
             }
 
             showLoading(true);
             try {
-                // Step 1: Submit measurements
-                for (const measurement of measurements) {
-                    await apiCall('upsert', 'measurements', measurement);
+                let successMessage = '';
+                
+                // Step 1: Submit measurements (if any)
+                if (hasMeasurements) {
+                    for (const measurement of measurements) {
+                        await apiCall('upsert', 'measurements', measurement);
+                    }
+                    successMessage = `${measurements.length} measurement(s) submitted successfully!`;
                 }
                 
                 // Step 2: Create BOM links for each selected assembly serial number
                 let bomLinksCreated = 0;
                 let bomLinksSkipped = 0;
                 
-                for (const assemblySerialNumber of assemblySerialNumbers) {
-                    const bomData = {
-                        part_no: partNo,
-                        serial_number: serialNumber,
-                        assembly_serial_number: assemblySerialNumber,
-                        created_at: new Date().toISOString()
-                    };
-                    
-                    try {
-                        const result = await apiCall('add_bom_if_not_exists', 'bom', bomData);
-                        if (result.created) {
-                            bomLinksCreated++;
-                        } else {
+                if (hasBomLinks) {
+                    for (const assemblySerialNumber of assemblySerialNumbers) {
+                        const bomData = {
+                            part_no: partNo,
+                            serial_number: serialNumber,
+                            assembly_serial_number: assemblySerialNumber,
+                            created_at: new Date().toISOString()
+                        };
+                        
+                        try {
+                            const result = await apiCall('add_bom_if_not_exists', 'bom', bomData);
+                            if (result.created) {
+                                bomLinksCreated++;
+                            } else {
+                                bomLinksSkipped++;
+                            }
+                        } catch (error) {
+                            console.warn(`Failed to create BOM link for ${assemblySerialNumber}:`, error);
                             bomLinksSkipped++;
                         }
-                    } catch (error) {
-                        console.warn(`Failed to create BOM link for ${assemblySerialNumber}:`, error);
-                        bomLinksSkipped++;
+                    }
+                    
+                    // Add BOM success message
+                    if (bomLinksCreated > 0 || bomLinksSkipped > 0) {
+                        if (successMessage) successMessage += ' ';
+                        if (bomLinksCreated > 0) {
+                            successMessage += `${bomLinksCreated} BOM link(s) created.`;
+                        }
+                        if (bomLinksSkipped > 0) {
+                            successMessage += ` ${bomLinksSkipped} BOM link(s) already existed.`;
+                        }
                     }
                 }
                 
-                // Success message
-                let successMessage = `Measurements submitted successfully!`;
-                if (bomLinksCreated > 0) {
-                    successMessage += ` ${bomLinksCreated} BOM link(s) created.`;
+                // If only BOM links and no measurements
+                if (!hasMeasurements && hasBomLinks) {
+                    if (bomLinksCreated > 0 && bomLinksSkipped > 0) {
+                        successMessage = `BOM links processed: ${bomLinksCreated} created, ${bomLinksSkipped} already existed.`;
+                    } else if (bomLinksCreated > 0) {
+                        successMessage = `${bomLinksCreated} BOM link(s) created successfully.`;
+                    } else if (bomLinksSkipped > 0) {
+                        successMessage = `${bomLinksSkipped} BOM link(s) already existed.`;
+                    }
                 }
-                if (bomLinksSkipped > 0) {
-                    successMessage += ` ${bomLinksSkipped} BOM link(s) already existed.`;
-                }
+                
                 showMessage(successMessage, 'success');
                 
                 // Reset form
                 document.getElementById('partNo').value = '';
                 document.getElementById('serialNumber').value = '';
-                document.getElementById('assemblySerialNumbers').selectedIndex = -1;
+                
+                // Reset multi-select
+                const searchInput = document.getElementById('assemblySerialSearch');
+                const dropdown = document.getElementById('assemblySerialDropdown');
+                searchInput.value = '';
+                selectedAssemblySerials = [];
+                updateTags();
+                dropdown.querySelectorAll('.multi-select-option').forEach(option => {
+                    option.classList.remove('selected');
+                });
+                dropdown.classList.remove('show');
+                
+                // Reset measurement inputs
                 document.querySelectorAll('.param-name').forEach(input => input.value = '');
                 document.querySelectorAll('.param-value').forEach(input => input.value = '');
                 
@@ -692,7 +836,7 @@
                 loadSerialNumbers();
                 
             } catch (error) {
-                showMessage(`Failed to submit measurements: ${error.message}`, 'error');
+                showMessage(`Failed to submit data: ${error.message}`, 'error');
             } finally {
                 showLoading(false);
             }
@@ -723,28 +867,160 @@
         }
 
         function updateSerialNumberSelects() {
-            const assemblySerialSelect = document.getElementById('assemblySerialNumbers');
+            initializeMultiSelect();
+        }
+
+        // Initialize multi-select functionality
+        function initializeMultiSelect() {
+            const searchInput = document.getElementById('assemblySerialSearch');
+            const dropdown = document.getElementById('assemblySerialDropdown');
+            const tagsContainer = document.getElementById('assemblySerialTags');
             
-            // Clear existing options
-            assemblySerialSelect.innerHTML = '';
+            // Clear existing content
+            dropdown.innerHTML = '';
+            tagsContainer.innerHTML = '';
+            selectedAssemblySerials = [];
+            dropdown.classList.remove('show');
             
-            // Add serial numbers - check if serialNumbers is a valid array
+            // Add serial numbers to dropdown
             if (Array.isArray(serialNumbers) && serialNumbers.length > 0) {
                 serialNumbers.forEach(sn => {
-                    const option = document.createElement('option');
-                    option.value = sn;
+                    const option = document.createElement('div');
+                    option.className = 'multi-select-option';
                     option.textContent = sn;
-                    assemblySerialSelect.appendChild(option);
+                    option.dataset.value = sn;
+                    option.onclick = (e) => {
+                        e.stopPropagation();
+                        toggleSelection(sn);
+                    };
+                    dropdown.appendChild(option);
                 });
             } else {
-                console.log('No serial numbers available or invalid format');
-                // Add a placeholder option when no data is available
-                const option = document.createElement('option');
-                option.value = '';
+                const option = document.createElement('div');
+                option.className = 'multi-select-option';
                 option.textContent = 'No serial numbers available';
-                option.disabled = true;
-                assemblySerialSelect.appendChild(option);
+                option.style.color = '#999';
+                option.style.cursor = 'default';
+                option.onclick = (e) => {
+                    e.stopPropagation();
+                    // Do nothing for placeholder option
+                };
+                dropdown.appendChild(option);
             }
+            
+            // Search functionality
+            searchInput.oninput = function() {
+                const searchTerm = this.value.toLowerCase();
+                const options = dropdown.querySelectorAll('.multi-select-option');
+                let visibleCount = 0;
+                
+                options.forEach(option => {
+                    const text = option.textContent.toLowerCase();
+                    if (text.includes(searchTerm) && text !== 'no serial numbers available' && text !== 'no matching serial numbers found') {
+                        option.style.display = 'block';
+                        visibleCount++;
+                    } else if (text === 'no serial numbers available' && serialNumbers.length === 0) {
+                        option.style.display = 'block';
+                    } else {
+                        option.style.display = 'none';
+                    }
+                });
+                
+                // Show "No serial numbers available" message if no matches
+                if (visibleCount === 0 && searchTerm !== '' && serialNumbers.length > 0) {
+                    const noResultsOption = document.createElement('div');
+                    noResultsOption.className = 'multi-select-option';
+                    noResultsOption.textContent = 'No matching serial numbers found';
+                    noResultsOption.style.color = '#999';
+                    noResultsOption.style.cursor = 'default';
+                    noResultsOption.onclick = (e) => e.stopPropagation();
+                    noResultsOption.id = 'no-results-option';
+                    
+                    // Remove existing no results option
+                    const existingNoResults = dropdown.querySelector('#no-results-option');
+                    if (existingNoResults) {
+                        existingNoResults.remove();
+                    }
+                    
+                    dropdown.appendChild(noResultsOption);
+                } else {
+                    // Remove no results option if it exists
+                    const existingNoResults = dropdown.querySelector('#no-results-option');
+                    if (existingNoResults) {
+                        existingNoResults.remove();
+                    }
+                }
+            };
+            
+            // Show/hide dropdown
+            searchInput.onfocus = function() {
+                dropdown.classList.add('show');
+            };
+            
+            // Close dropdown when clicking outside (only add once)
+            if (!multiSelectInitialized) {
+                document.addEventListener('click', function(event) {
+                    const multiSelectContainer = document.querySelector('.multi-select-container');
+                    if (!multiSelectContainer.contains(event.target)) {
+                        const dropdown = document.getElementById('assemblySerialDropdown');
+                        dropdown.classList.remove('show');
+                    }
+                });
+                multiSelectInitialized = true;
+            }
+            
+            // Initial placeholder update
+            updateTags();
+        }
+
+        // Toggle selection of serial number
+        function toggleSelection(serialNumber) {
+            const dropdown = document.getElementById('assemblySerialDropdown');
+            const option = dropdown.querySelector(`[data-value="${serialNumber}"]`);
+            
+            if (selectedAssemblySerials.includes(serialNumber)) {
+                // Remove from selection
+                selectedAssemblySerials = selectedAssemblySerials.filter(sn => sn !== serialNumber);
+                option.classList.remove('selected');
+            } else {
+                // Add to selection
+                selectedAssemblySerials.push(serialNumber);
+                option.classList.add('selected');
+            }
+            
+            updateTags();
+        }
+
+        // Update tags display
+        function updateTags() {
+            const tagsContainer = document.getElementById('assemblySerialTags');
+            const searchInput = document.getElementById('assemblySerialSearch');
+            
+            tagsContainer.innerHTML = '';
+            
+            selectedAssemblySerials.forEach(serialNumber => {
+                const tag = document.createElement('div');
+                tag.className = 'multi-select-tag';
+                tag.innerHTML = `
+                    <span>${serialNumber}</span>
+                    <button type="button" class="remove-tag" onclick="removeTag('${serialNumber}')">×</button>
+                `;
+                tagsContainer.appendChild(tag);
+            });
+            
+            // Update search input placeholder
+            if (selectedAssemblySerials.length > 0) {
+                searchInput.placeholder = `${selectedAssemblySerials.length} selected - Search for more...`;
+            } else if (Array.isArray(serialNumbers) && serialNumbers.length > 0) {
+                searchInput.placeholder = 'Search and select assembly serial numbers...';
+            } else {
+                searchInput.placeholder = 'No serial numbers available';
+            }
+        }
+
+        // Remove tag
+        function removeTag(serialNumber) {
+            toggleSelection(serialNumber);
         }
 
         // BOM Tree functionality
