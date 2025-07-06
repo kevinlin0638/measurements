@@ -103,6 +103,28 @@ function handleApiCall(requestData) {
         }
         break;
         
+      case 'upsert':
+        if (!table || !data) {
+          throw new Error('Missing table or data parameter');
+        }
+        if (table === 'measurements') {
+          result = upsertMeasurementData(data);
+        } else {
+          throw new Error('Upsert not supported for table: ' + table);
+        }
+        break;
+        
+      case 'add_bom_if_not_exists':
+        if (!table || !data) {
+          throw new Error('Missing table or data parameter');
+        }
+        if (table === 'bom') {
+          result = addBomDataIfNotExists(data);
+        } else {
+          throw new Error('add_bom_if_not_exists not supported for table: ' + table);
+        }
+        break;
+        
       default:
         throw new Error('Invalid action: ' + action);
     }
@@ -157,6 +179,84 @@ function addBomData(data) {
     
   } catch (error) {
     console.error('Error in addBomData:', error);
+    throw new Error('Unable to add BOM data: ' + error.message);
+  }
+}
+
+/**
+ * Add BOM data if not exists - prevents duplicate BOM relationships
+ */
+function addBomDataIfNotExists(data) {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    let sheet = spreadsheet.getSheetByName(BOM_SHEET_NAME);
+    
+    // Create sheet if it doesn't exist
+    if (!sheet) {
+      sheet = spreadsheet.insertSheet(BOM_SHEET_NAME);
+      // Set header row
+      sheet.getRange(1, 1, 1, 5).setValues([
+        ['id', 'part_no', 'serial_number', 'assembly_serial_number', 'created_at']
+      ]);
+    }
+    
+    // Check if relationship already exists
+    const existingData = sheet.getDataRange().getValues();
+    if (existingData.length > 1) {
+      // Skip header row
+      const dataRows = existingData.slice(1);
+      
+      // Check for existing relationship
+      const existingRelationship = dataRows.find(row => {
+        const [id, part_no, serial_number, assembly_serial_number, created_at] = row;
+        return part_no === data.part_no && 
+               serial_number === data.serial_number && 
+               assembly_serial_number === data.assembly_serial_number;
+      });
+      
+      if (existingRelationship) {
+        console.log('BOM relationship already exists:', existingRelationship);
+        return {
+          created: false,
+          existing: true,
+          message: 'BOM relationship already exists',
+          data: {
+            id: existingRelationship[0],
+            part_no: existingRelationship[1],
+            serial_number: existingRelationship[2],
+            assembly_serial_number: existingRelationship[3],
+            created_at: existingRelationship[4]
+          }
+        };
+      }
+    }
+    
+    // If not exists, create new relationship
+    const lastRow = sheet.getLastRow();
+    const nextId = lastRow === 1 ? 1 : lastRow; // Start from 1 if only header row
+    
+    // Prepare data to insert
+    const rowValues = [
+      nextId,
+      data.part_no,
+      data.serial_number,
+      data.assembly_serial_number || '',
+      data.created_at
+    ];
+    
+    // Insert data
+    sheet.getRange(lastRow + 1, 1, 1, 5).setValues([rowValues]);
+    
+    return {
+      created: true,
+      existing: false,
+      id: nextId,
+      table: 'bom',
+      row: lastRow + 1
+    };
+    
+  } catch (error) {
+    console.error('Error in addBomDataIfNotExists:', error);
     throw new Error('Unable to add BOM data: ' + error.message);
   }
 }
@@ -453,6 +553,81 @@ function deleteMeasurementData(id) {
   } catch (error) {
     console.error('Error deleting measurement data:', error);
     throw new Error('Unable to delete measurement data: ' + error.message);
+  }
+}
+
+/**
+ * Upsert measurement data (Update if exists, Insert if not)
+ */
+function upsertMeasurementData(data) {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    let sheet = spreadsheet.getSheetByName(MEASUREMENTS_SHEET_NAME);
+    
+    // Create sheet if it doesn't exist
+    if (!sheet) {
+      sheet = spreadsheet.insertSheet(MEASUREMENTS_SHEET_NAME);
+      // Set header row
+      sheet.getRange(1, 1, 1, 5).setValues([
+        ['id', 'serial_number', 'para_name', 'para_value', 'created_at']
+      ]);
+    }
+    
+    const allData = sheet.getDataRange().getValues();
+    const headers = allData[0];
+    const idIndex = headers.indexOf('id');
+    const serialNumberIndex = headers.indexOf('serial_number');
+    const paraNameIndex = headers.indexOf('para_name');
+    const paraValueIndex = headers.indexOf('para_value');
+    const createdAtIndex = headers.indexOf('created_at');
+    
+    if (idIndex === -1 || serialNumberIndex === -1 || paraNameIndex === -1 || paraValueIndex === -1 || createdAtIndex === -1) {
+      throw new Error('Required columns not found');
+    }
+    
+    // Find existing row with matching serial_number and para_name
+    for (let i = 1; i < allData.length; i++) {
+      if (allData[i][serialNumberIndex] === data.serial_number && 
+          allData[i][paraNameIndex] === data.para_name) {
+        // Update existing row
+        sheet.getRange(i + 1, paraValueIndex + 1).setValue(data.para_value);
+        sheet.getRange(i + 1, createdAtIndex + 1).setValue(data.created_at);
+        
+        return {
+          id: allData[i][idIndex],
+          table: 'measurements',
+          row: i + 1,
+          action: 'updated'
+        };
+      }
+    }
+    
+    // No existing row found, insert new one
+    const lastRow = sheet.getLastRow();
+    const nextId = lastRow === 1 ? 1 : lastRow; // Start from 1 if only header row
+    
+    // Prepare data to insert
+    const rowValues = [
+      nextId,
+      data.serial_number,
+      data.para_name,
+      data.para_value,
+      data.created_at
+    ];
+    
+    // Insert data
+    sheet.getRange(lastRow + 1, 1, 1, 5).setValues([rowValues]);
+    
+    return {
+      id: nextId,
+      table: 'measurements',
+      row: lastRow + 1,
+      action: 'inserted'
+    };
+    
+  } catch (error) {
+    console.error('Error in upsertMeasurementData:', error);
+    throw new Error('Unable to upsert measurement data: ' + error.message);
   }
 }
 

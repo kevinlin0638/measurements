@@ -112,6 +112,31 @@
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
+        .form-group select[multiple] {
+            height: 120px;
+            padding: 8px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+        }
+
+        .form-group select[multiple] option {
+            padding: 8px;
+            margin: 2px 0;
+            border-radius: 4px;
+            background-color: white;
+            color: #333;
+        }
+
+        .form-group select[multiple] option:hover {
+            background-color: #e9ecef;
+        }
+
+        .form-group select[multiple] option:checked {
+            background-color: #667eea;
+            color: white;
+        }
+
         .btn {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -398,8 +423,23 @@
                 <h3>📝 Measurement Data Entry</h3>
                 <form id="measurementForm">
                     <div class="form-group">
+                        <label for="partNo">Part Number</label>
+                        <input type="text" id="partNo" name="partNo" placeholder="Enter part number" required>
+                    </div>
+                    
+                    <div class="form-group">
                         <label for="serialNumber">Serial Number</label>
                         <input type="text" id="serialNumber" name="serialNumber" placeholder="Enter serial number" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="assemblySerialNumbers">Assembly Serial Numbers (Multiple Selection)</label>
+                        <select id="assemblySerialNumbers" name="assemblySerialNumbers" multiple style="height: 120px;">
+                            <option value="">Loading...</option>
+                        </select>
+                        <small style="color: #666; font-size: 0.9em; margin-top: 5px; display: block;">
+                            Hold Ctrl (Windows) or Cmd (Mac) to select multiple items
+                        </small>
                     </div>
                     
                     <div id="measurementInputs">
@@ -420,33 +460,7 @@
                     
                     <button type="button" class="add-measurement" onclick="addMeasurement()">+ Add Measurement</button>
                     <br><br>
-                    <button type="button" class="btn" onclick="submitMeasurements()">Submit Measurements</button>
-                </form>
-            </div>
-
-            <div class="section">
-                <h3>📦 BOM Data Entry</h3>
-                <form id="bomForm">
-                    <div class="form-group">
-                        <label for="bomPartNo">Part Number</label>
-                        <input type="text" id="bomPartNo" name="bomPartNo" placeholder="Enter part number" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="bomSerialNumber">Serial Number</label>
-                        <select id="bomSerialNumber" name="bomSerialNumber" required>
-                            <option value="">Select a serial number</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="bomAssemblySerialNumber">Assembly Serial Number (Optional)</label>
-                        <select id="bomAssemblySerialNumber" name="bomAssemblySerialNumber">
-                            <option value="">Select assembly serial number</option>
-                        </select>
-                    </div>
-                    
-                    <button type="button" class="btn" onclick="submitBOM()">Submit BOM</button>
+                    <button type="button" class="btn" onclick="submitEnhancedMeasurements()">Submit Measurements & Create BOM Links</button>
                 </form>
             </div>
         </div>
@@ -562,7 +576,7 @@
         }
 
         // API calls using Google Apps Script
-        async function apiCall(action, table, data = null) {
+        function apiCall(action, table, data = null) {
             const requestData = {
                 action: action,
                 table: table,
@@ -571,32 +585,35 @@
             
             console.log('API Call:', requestData);
             
-            try {
-                // Use Google Apps Script's built-in server-side function
-                const result = await google.script.run
-                    .withSuccessHandler(function(result) {
-                        console.log('API Success:', result);
-                        return result;
-                    })
-                    .withFailureHandler(function(error) {
-                        console.error('API Error:', error);
-                        throw new Error(error.message);
-                    })
-                    .handleApiCall(requestData);
-                
-                return result;
-                
-            } catch (error) {
-                console.error('API Error:', error);
-                throw error;
-            }
+            return new Promise((resolve, reject) => {
+                try {
+                    // Use Google Apps Script's built-in server-side function
+                    google.script.run
+                        .withSuccessHandler(function(result) {
+                            console.log('API Success:', result);
+                            resolve(result);
+                        })
+                        .withFailureHandler(function(error) {
+                            console.error('API Error:', error);
+                            reject(new Error(error.message || error.toString()));
+                        })
+                        .handleApiCall(requestData);
+                } catch (error) {
+                    console.error('API Error:', error);
+                    reject(error);
+                }
+            });
         }
 
-        // Submit measurements
-        async function submitMeasurements() {
+        // Submit measurements and create BOM links
+        async function submitEnhancedMeasurements() {
+            const partNo = document.getElementById('partNo').value.trim();
             const serialNumber = document.getElementById('serialNumber').value.trim();
-            if (!serialNumber) {
-                showMessage('Please enter a serial number', 'error');
+            const assemblySerialNumbers = Array.from(document.getElementById('assemblySerialNumbers').selectedOptions, 
+                option => option.value).filter(value => value !== '');
+
+            if (!partNo || !serialNumber) {
+                showMessage('Please enter part number and serial number', 'error');
                 return;
             }
 
@@ -624,13 +641,50 @@
 
             showLoading(true);
             try {
+                // Step 1: Submit measurements
                 for (const measurement of measurements) {
-                    await apiCall('add', 'measurements', measurement);
+                    await apiCall('upsert', 'measurements', measurement);
                 }
-                showMessage('Measurements submitted successfully!', 'success');
+                
+                // Step 2: Create BOM links for each selected assembly serial number
+                let bomLinksCreated = 0;
+                let bomLinksSkipped = 0;
+                
+                for (const assemblySerialNumber of assemblySerialNumbers) {
+                    const bomData = {
+                        part_no: partNo,
+                        serial_number: serialNumber,
+                        assembly_serial_number: assemblySerialNumber,
+                        created_at: new Date().toISOString()
+                    };
+                    
+                    try {
+                        const result = await apiCall('add_bom_if_not_exists', 'bom', bomData);
+                        if (result.created) {
+                            bomLinksCreated++;
+                        } else {
+                            bomLinksSkipped++;
+                        }
+                    } catch (error) {
+                        console.warn(`Failed to create BOM link for ${assemblySerialNumber}:`, error);
+                        bomLinksSkipped++;
+                    }
+                }
+                
+                // Success message
+                let successMessage = `Measurements submitted successfully!`;
+                if (bomLinksCreated > 0) {
+                    successMessage += ` ${bomLinksCreated} BOM link(s) created.`;
+                }
+                if (bomLinksSkipped > 0) {
+                    successMessage += ` ${bomLinksSkipped} BOM link(s) already existed.`;
+                }
+                showMessage(successMessage, 'success');
                 
                 // Reset form
+                document.getElementById('partNo').value = '';
                 document.getElementById('serialNumber').value = '';
+                document.getElementById('assemblySerialNumbers').selectedIndex = -1;
                 document.querySelectorAll('.param-name').forEach(input => input.value = '');
                 document.querySelectorAll('.param-value').forEach(input => input.value = '');
                 
@@ -647,66 +701,49 @@
         async function loadSerialNumbers() {
             try {
                 const result = await apiCall('get', 'serial_numbers');
-                serialNumbers = result;
+                console.log('Serial numbers loaded:', result);
+                
+                // Ensure result is an array
+                if (Array.isArray(result)) {
+                    serialNumbers = result;
+                } else if (result && typeof result === 'object' && result.data && Array.isArray(result.data)) {
+                    serialNumbers = result.data;
+                } else {
+                    console.warn('Invalid serial numbers format:', result);
+                    serialNumbers = [];
+                }
+                
                 updateSerialNumberSelects();
             } catch (error) {
                 console.error('Failed to load serial numbers:', error);
+                serialNumbers = [];
+                updateSerialNumberSelects();
+                showMessage(`Failed to load serial numbers: ${error.message}`, 'error');
             }
         }
 
         function updateSerialNumberSelects() {
-            const bomSerialSelect = document.getElementById('bomSerialNumber');
-            const assemblySerialSelect = document.getElementById('bomAssemblySerialNumber');
+            const assemblySerialSelect = document.getElementById('assemblySerialNumbers');
             
             // Clear existing options
-            bomSerialSelect.innerHTML = '<option value="">Select a serial number</option>';
-            assemblySerialSelect.innerHTML = '<option value="">Select assembly serial number</option>';
+            assemblySerialSelect.innerHTML = '';
             
-            // Add serial numbers
-            serialNumbers.forEach(sn => {
-                const option1 = document.createElement('option');
-                option1.value = sn;
-                option1.textContent = sn;
-                bomSerialSelect.appendChild(option1);
-                
-                const option2 = document.createElement('option');
-                option2.value = sn;
-                option2.textContent = sn;
-                assemblySerialSelect.appendChild(option2);
-            });
-        }
-
-        async function submitBOM() {
-            const partNo = document.getElementById('bomPartNo').value.trim();
-            const serialNumber = document.getElementById('bomSerialNumber').value;
-            const assemblySerialNumber = document.getElementById('bomAssemblySerialNumber').value;
-
-            if (!partNo || !serialNumber) {
-                showMessage('Please enter part number and select serial number', 'error');
-                return;
-            }
-
-            const bomData = {
-                part_no: partNo,
-                serial_number: serialNumber,
-                assembly_serial_number: assemblySerialNumber || null,
-                created_at: new Date().toISOString()
-            };
-
-            showLoading(true);
-            try {
-                await apiCall('add', 'bom', bomData);
-                showMessage('BOM data submitted successfully!', 'success');
-                
-                // Reset form
-                document.getElementById('bomPartNo').value = '';
-                document.getElementById('bomSerialNumber').value = '';
-                document.getElementById('bomAssemblySerialNumber').value = '';
-                
-            } catch (error) {
-                showMessage(`Failed to submit BOM: ${error.message}`, 'error');
-            } finally {
-                showLoading(false);
+            // Add serial numbers - check if serialNumbers is a valid array
+            if (Array.isArray(serialNumbers) && serialNumbers.length > 0) {
+                serialNumbers.forEach(sn => {
+                    const option = document.createElement('option');
+                    option.value = sn;
+                    option.textContent = sn;
+                    assemblySerialSelect.appendChild(option);
+                });
+            } else {
+                console.log('No serial numbers available or invalid format');
+                // Add a placeholder option when no data is available
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'No serial numbers available';
+                option.disabled = true;
+                assemblySerialSelect.appendChild(option);
             }
         }
 
@@ -727,7 +764,7 @@
             const container = document.getElementById('bomTree');
             container.innerHTML = '';
 
-            if (Object.keys(treeData).length === 0) {
+            if (!treeData || typeof treeData !== 'object' || Object.keys(treeData).length === 0) {
                 container.innerHTML = '<p>No BOM data available. Please add some BOM entries first.</p>';
                 return;
             }
@@ -816,19 +853,27 @@
             container.style.display = 'block';
 
             tableBody.innerHTML = '';
-            measurements.forEach(measurement => {
+            
+            // Check if measurements is a valid array
+            if (Array.isArray(measurements) && measurements.length > 0) {
+                measurements.forEach(measurement => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${measurement.para_name}</td>
+                        <td>${measurement.para_value}</td>
+                        <td>${new Date(measurement.created_at).toLocaleString()}</td>
+                        <td>
+                            <button class="btn btn-warning" onclick="editMeasurement(${measurement.id}, '${measurement.para_name}', '${measurement.para_value}')">Edit</button>
+                            <button class="btn btn-danger" onclick="deleteMeasurement(${measurement.id})">Delete</button>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            } else {
                 const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${measurement.para_name}</td>
-                    <td>${measurement.para_value}</td>
-                    <td>${new Date(measurement.created_at).toLocaleString()}</td>
-                    <td>
-                        <button class="btn btn-warning" onclick="editMeasurement(${measurement.id}, '${measurement.para_name}', '${measurement.para_value}')">Edit</button>
-                        <button class="btn btn-danger" onclick="deleteMeasurement(${measurement.id})">Delete</button>
-                    </td>
-                `;
+                row.innerHTML = `<td colspan="4" style="text-align: center; color: #666;">No measurement data available for this serial number</td>`;
                 tableBody.appendChild(row);
-            });
+            }
         }
 
         // Modal functions
