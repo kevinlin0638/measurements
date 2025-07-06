@@ -1,5 +1,5 @@
 /**
- * Google Apps Script 代碼
+ * Google Apps Script 代碼 - 強化版 CORS 支援
  * 用於處理 HTML 表單提交的資料到 Google Sheets
  * 
  * 設置步驟：
@@ -7,7 +7,8 @@
  * 2. 創建新專案
  * 3. 將此代碼貼入 Code.gs 文件
  * 4. 修改下面的 SPREADSHEET_ID 為您的 Google Sheets ID
- * 5. 部署為 Web App
+ * 5. 部署為 Web App（重要：設定為 "Anyone can access"）
+ * 6. 複製 Web App URL 到前端代碼
  */
 
 // 請替換為您的 Google Sheets ID
@@ -18,25 +19,73 @@ const BOM_SHEET_NAME = 'bom';
 const MEASUREMENTS_SHEET_NAME = 'measurements';
 
 /**
- * Handle OPTIONS requests for CORS
+ * 通用 CORS 標頭設定函數
  */
-function doOptions(e) {
-  console.log('=== doOptions called ===');
-  return ContentService
-    .createTextOutput('')
-    .setMimeType(ContentService.MimeType.TEXT)
+function setCorsHeaders(response) {
+  return response
     .setHeader('Access-Control-Allow-Origin', '*')
     .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
     .setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control')
-    .setHeader('Access-Control-Allow-Credentials', 'true')
-    .setHeader('Access-Control-Max-Age', '86400');
+    .setHeader('Access-Control-Allow-Credentials', 'false')
+    .setHeader('Access-Control-Max-Age', '86400')
+    .setHeader('Content-Type', 'application/json; charset=UTF-8');
 }
 
 /**
- * Handle POST requests
+ * Handle OPTIONS requests for CORS preflight
+ */
+function doOptions(e) {
+  console.log('=== doOptions called for CORS preflight ===');
+  console.log('Request parameters:', e.parameter);
+  console.log('Request headers:', e);
+  
+  const response = ContentService
+    .createTextOutput('')
+    .setMimeType(ContentService.MimeType.TEXT);
+  
+  return setCorsHeaders(response);
+}
+
+/**
+ * Handle GET requests (for testing and simple queries)
+ */
+function doGet(e) {
+  console.log('=== doGet called ===');
+  console.log('Request parameters:', e.parameter);
+  
+  try {
+    const response = ContentService
+      .createTextOutput(JSON.stringify({
+        success: true,
+        message: 'Google Apps Script is running properly',
+        timestamp: new Date().toISOString(),
+        version: '2.0'
+      }))
+      .setMimeType(ContentService.MimeType.TEXT);
+    
+    return setCorsHeaders(response);
+  } catch (error) {
+    console.error('Error in doGet:', error);
+    const response = ContentService
+      .createTextOutput(JSON.stringify({
+        success: false,
+        message: 'Error in doGet: ' + error.message,
+        timestamp: new Date().toISOString()
+      }))
+      .setMimeType(ContentService.MimeType.TEXT);
+    
+    return setCorsHeaders(response);
+  }
+}
+
+/**
+ * Handle POST requests - 主要的 API 端點
  */
 function doPost(e) {
-  console.log('doPost called with:', e);
+  console.log('=== doPost called ===');
+  console.log('Request e:', e);
+  console.log('Request parameters:', e.parameter);
+  console.log('Request postData:', e.postData);
   
   try {
     // Parse request data from different sources
@@ -49,7 +98,7 @@ function doPost(e) {
         console.log('Parsed request data from parameter:', data);
       } catch (parseError) {
         console.error('JSON parse error from parameter:', parseError);
-        return createResponse(false, 'Invalid JSON in parameter data');
+        return createErrorResponse('Invalid JSON in parameter data: ' + parseError.message);
       }
     } 
     // Check if data is in POST body (from JSON request)
@@ -59,13 +108,18 @@ function doPost(e) {
         console.log('Parsed request data from postData:', data);
       } catch (parseError) {
         console.error('JSON parse error from postData:', parseError);
-        return createResponse(false, 'Invalid JSON in request body');
+        return createErrorResponse('Invalid JSON in request body: ' + parseError.message);
       }
-    } 
+    }
+    // Check if data is directly in parameters
+    else if (e.parameter && e.parameter.action) {
+      data = e.parameter;
+      console.log('Using direct parameter data:', data);
+    }
     // No data found
     else {
       console.error('No request data found');
-      return createResponse(false, 'No request data provided');
+      return createErrorResponse('No request data provided');
     }
     
     const action = data.action;
@@ -76,7 +130,7 @@ function doPost(e) {
     
     // Validate required parameters
     if (!action) {
-      return createResponse(false, 'Missing action parameter');
+      return createErrorResponse('Missing action parameter');
     }
     
     // Handle different actions
@@ -84,20 +138,20 @@ function doPost(e) {
     switch(action) {
       case 'add':
         if (!table || !rowData) {
-          return createResponse(false, 'Missing table or data parameter');
+          return createErrorResponse('Missing table or data parameter');
         }
         if (table === 'bom') {
           result = addBomData(rowData);
         } else if (table === 'measurements') {
           result = addMeasurementsData(rowData);
         } else {
-          return createResponse(false, 'Invalid table type: ' + table);
+          return createErrorResponse('Invalid table type: ' + table);
         }
         break;
         
       case 'get':
         if (!table) {
-          return createResponse(false, 'Missing table parameter');
+          return createErrorResponse('Missing table parameter');
         }
         if (table === 'bom') {
           result = getBomData();
@@ -108,51 +162,88 @@ function doPost(e) {
         } else if (table === 'serial_numbers') {
           result = getSerialNumbers();
         } else {
-          return createResponse(false, 'Invalid table type: ' + table);
+          return createErrorResponse('Invalid table type: ' + table);
         }
         break;
         
       case 'update':
         if (!table || !rowData || !rowData.id) {
-          return createResponse(false, 'Missing table, data, or id parameter');
+          return createErrorResponse('Missing table, data, or id parameter');
         }
         if (table === 'measurements') {
           result = updateMeasurementData(rowData);
         } else {
-          return createResponse(false, 'Update not supported for table: ' + table);
+          return createErrorResponse('Update not supported for table: ' + table);
         }
         break;
         
       case 'delete':
         if (!table || !rowData || !rowData.id) {
-          return createResponse(false, 'Missing table, data, or id parameter');
+          return createErrorResponse('Missing table, data, or id parameter');
         }
         if (table === 'measurements') {
           result = deleteMeasurementData(rowData.id);
         } else {
-          return createResponse(false, 'Delete not supported for table: ' + table);
+          return createErrorResponse('Delete not supported for table: ' + table);
         }
         break;
         
       default:
-        return createResponse(false, 'Invalid action: ' + action);
+        return createErrorResponse('Invalid action: ' + action);
     }
     
     console.log('Operation result:', result);
-    return createResponse(true, 'Operation completed successfully', result);
+    return createSuccessResponse('Operation completed successfully', result);
     
   } catch (error) {
     console.error('Unexpected error in doPost:', error);
     console.error('Error stack:', error.stack);
-    return createResponse(false, 'Server error: ' + error.message + (error.stack ? ' | Stack: ' + error.stack : ''));
+    return createErrorResponse('Server error: ' + error.message + (error.stack ? ' | Stack: ' + error.stack : ''));
   }
 }
 
 /**
- * 處理 GET 請求（用於測試）
+ * Create success response with CORS headers
  */
-function doGet(e) {
-  return createResponse(true, 'Google Apps Script is running properly');
+function createSuccessResponse(message, data = null) {
+  const response = {
+    success: true,
+    message: message,
+    timestamp: new Date().toISOString()
+  };
+  
+  if (data !== null && data !== undefined) {
+    response.data = data;
+  }
+  
+  const jsonResponse = JSON.stringify(response);
+  console.log('Creating success response:', jsonResponse);
+  
+  const contentResponse = ContentService
+    .createTextOutput(jsonResponse)
+    .setMimeType(ContentService.MimeType.TEXT);
+  
+  return setCorsHeaders(contentResponse);
+}
+
+/**
+ * Create error response with CORS headers
+ */
+function createErrorResponse(message) {
+  const response = {
+    success: false,
+    message: message,
+    timestamp: new Date().toISOString()
+  };
+  
+  const jsonResponse = JSON.stringify(response);
+  console.log('Creating error response:', jsonResponse);
+  
+  const contentResponse = ContentService
+    .createTextOutput(jsonResponse)
+    .setMimeType(ContentService.MimeType.TEXT);
+  
+  return setCorsHeaders(contentResponse);
 }
 
 /**
@@ -242,104 +333,6 @@ function addMeasurementsData(data) {
   } catch (error) {
     console.error('Error in addMeasurementsData:', error);
     throw new Error('Unable to add Measurements data: ' + error.message);
-  }
-}
-
-/**
- * Create unified response format
- */
-function createResponse(success, message, data = null) {
-  const response = {
-    success: success,
-    message: message,
-    timestamp: new Date().toISOString()
-  };
-  
-  if (data !== null && data !== undefined) {
-    response.data = data;
-  }
-  
-  const jsonResponse = JSON.stringify(response);
-  console.log('Creating response:', jsonResponse);
-  
-  return ContentService
-    .createTextOutput(jsonResponse)
-    .setMimeType(ContentService.MimeType.TEXT)
-    .setHeader('Access-Control-Allow-Origin', '*')
-    .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
-    .setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control')
-    .setHeader('Access-Control-Allow-Credentials', 'true')
-    .setHeader('Access-Control-Max-Age', '86400');
-}
-
-/**
- * Test function - Can be executed in Google Apps Script editor
- */
-function testScript() {
-  // Test BOM data
-  const bomTestData = {
-    part_no: 'TEST001',
-    serial_number: 'SN001',
-    assembly_serial_number: 'ASN001',
-    created_at: new Date().toISOString()
-  };
-  
-  console.log('Testing BOM data insertion...');
-  try {
-    const bomResult = addBomData(bomTestData);
-    console.log('BOM test result:', bomResult);
-  } catch (error) {
-    console.error('BOM test failed:', error);
-  }
-  
-  // Test Measurements data
-  const measurementsTestData = {
-    serial_number: 'SN001',
-    para_name: 'Temperature',
-    para_value: 25.5,
-    created_at: new Date().toISOString()
-  };
-  
-  console.log('Testing Measurements data insertion...');
-  try {
-    const measurementsResult = addMeasurementsData(measurementsTestData);
-    console.log('Measurements test result:', measurementsResult);
-  } catch (error) {
-    console.error('Measurements test failed:', error);
-  }
-}
-
-/**
- * Initialize sheets (if needed)
- */
-function initializeSheets() {
-  try {
-    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
-    
-    // Initialize BOM sheet
-    let bomSheet = spreadsheet.getSheetByName(BOM_SHEET_NAME);
-    if (!bomSheet) {
-      bomSheet = spreadsheet.insertSheet(BOM_SHEET_NAME);
-      bomSheet.getRange(1, 1, 1, 5).setValues([
-        ['id', 'part_no', 'serial_number', 'assembly_serial_number', 'created_at']
-      ]);
-      console.log('BOM sheet created and initialized');
-    }
-    
-    // Initialize Measurements sheet
-    let measurementsSheet = spreadsheet.getSheetByName(MEASUREMENTS_SHEET_NAME);
-    if (!measurementsSheet) {
-      measurementsSheet = spreadsheet.insertSheet(MEASUREMENTS_SHEET_NAME);
-      measurementsSheet.getRange(1, 1, 1, 5).setValues([
-        ['id', 'serial_number', 'para_name', 'para_value', 'created_at']
-      ]);
-      console.log('Measurements sheet created and initialized');
-    }
-    
-    console.log('Sheets initialization completed');
-    
-  } catch (error) {
-    console.error('Error initializing sheets:', error);
   }
 }
 
@@ -601,5 +594,76 @@ function deleteMeasurementData(id) {
   } catch (error) {
     console.error('Error deleting measurement data:', error);
     throw new Error('Unable to delete measurement data: ' + error.message);
+  }
+}
+
+/**
+ * Test function - Can be executed in Google Apps Script editor
+ */
+function testScript() {
+  // Test BOM data
+  const bomTestData = {
+    part_no: 'TEST001',
+    serial_number: 'SN001',
+    assembly_serial_number: 'ASN001',
+    created_at: new Date().toISOString()
+  };
+  
+  console.log('Testing BOM data insertion...');
+  try {
+    const bomResult = addBomData(bomTestData);
+    console.log('BOM test result:', bomResult);
+  } catch (error) {
+    console.error('BOM test failed:', error);
+  }
+  
+  // Test Measurements data
+  const measurementsTestData = {
+    serial_number: 'SN001',
+    para_name: 'Temperature',
+    para_value: 25.5,
+    created_at: new Date().toISOString()
+  };
+  
+  console.log('Testing Measurements data insertion...');
+  try {
+    const measurementsResult = addMeasurementsData(measurementsTestData);
+    console.log('Measurements test result:', measurementsResult);
+  } catch (error) {
+    console.error('Measurements test failed:', error);
+  }
+}
+
+/**
+ * Initialize sheets (if needed)
+ */
+function initializeSheets() {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    
+    // Initialize BOM sheet
+    let bomSheet = spreadsheet.getSheetByName(BOM_SHEET_NAME);
+    if (!bomSheet) {
+      bomSheet = spreadsheet.insertSheet(BOM_SHEET_NAME);
+      bomSheet.getRange(1, 1, 1, 5).setValues([
+        ['id', 'part_no', 'serial_number', 'assembly_serial_number', 'created_at']
+      ]);
+      console.log('BOM sheet created and initialized');
+    }
+    
+    // Initialize Measurements sheet
+    let measurementsSheet = spreadsheet.getSheetByName(MEASUREMENTS_SHEET_NAME);
+    if (!measurementsSheet) {
+      measurementsSheet = spreadsheet.insertSheet(MEASUREMENTS_SHEET_NAME);
+      measurementsSheet.getRange(1, 1, 1, 5).setValues([
+        ['id', 'serial_number', 'para_name', 'para_value', 'created_at']
+      ]);
+      console.log('Measurements sheet created and initialized');
+    }
+    
+    console.log('Sheets initialization completed');
+    
+  } catch (error) {
+    console.error('Error initializing sheets:', error);
   }
 } 

@@ -528,7 +528,8 @@
     </div>
 
     <script>
-        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwYmRyTn-cZemdgGNgWB1GAKlMumDDwLdOA2--6A0YbbT8eFNlMqAguEiDcfsd6fP0Q/exec';
+        // API Configuration
+        const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwYmRyTn-cZemdgGNgWB1GAKlMumDDwLdOA2--6A0YbbT8eFNlMqAguEiDcfsd6fP0Q/exec';
         
         let currentEditId = null;
         let serialNumbers = [];
@@ -567,59 +568,96 @@
             loading.style.display = show ? 'block' : 'none';
         }
 
-        // API calls
+        // Enhanced API call function with better CORS handling
         async function apiCall(action, table, data = null) {
-            showLoading(true);
+            const requestData = {
+                action: action,
+                table: table,
+                data: data
+            };
+            
+            console.log('API Call:', requestData);
             
             try {
-                console.log('API Call:', { action, table, data });
+                // Use URL-encoded format for better Google Apps Script compatibility
+                const formData = new FormData();
+                formData.append('data', JSON.stringify(requestData));
                 
-                const requestData = {
-                    action: action,
-                    table: table,
-                    data: data
-                };
-                
-                // Method 1: Try URL-encoded format (works better with local files)
-                const formData = new URLSearchParams({
-                    'data': JSON.stringify(requestData)
-                });
-                
-                const response = await fetch(SCRIPT_URL, {
+                const response = await fetch(GAS_WEB_APP_URL, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: formData
+                    body: formData,
+                    mode: 'cors',
+                    cache: 'no-cache',
+                    redirect: 'follow'
                 });
-
+                
                 console.log('Response status:', response.status);
-                console.log('Response type:', response.type);
-
+                console.log('Response headers:', response.headers);
+                
+                // Check if response is ok
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
-
-                const responseText = await response.text();
-                console.log('Response text:', responseText);
                 
+                const text = await response.text();
+                console.log('Response text:', text);
+                
+                // Try to parse JSON
                 let result;
                 try {
-                    result = JSON.parse(responseText);
+                    result = JSON.parse(text);
                 } catch (parseError) {
                     console.error('JSON parse error:', parseError);
-                    console.error('Raw response:', responseText);
-                    throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}`);
+                    throw new Error('Invalid JSON response: ' + text);
                 }
                 
                 console.log('Parsed result:', result);
-                return result;
+                
+                if (result.success) {
+                    return result.data;
+                } else {
+                    throw new Error(result.message || 'Unknown error');
+                }
                 
             } catch (error) {
                 console.error('API Error:', error);
-                throw error;
-            } finally {
-                showLoading(false);
+                
+                // Enhanced error handling
+                if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                    throw new Error('Network error: Please check your internet connection and try again.');
+                } else if (error.message.includes('CORS')) {
+                    throw new Error('CORS error: Please ensure Google Apps Script is deployed correctly.');
+                } else {
+                    throw error;
+                }
+            }
+        }
+        
+        // Test API connection
+        async function testApiConnection() {
+            try {
+                console.log('Testing API connection...');
+                const response = await fetch(GAS_WEB_APP_URL, {
+                    method: 'GET',
+                    mode: 'cors',
+                    cache: 'no-cache'
+                });
+                
+                const text = await response.text();
+                const result = JSON.parse(text);
+                
+                console.log('API connection test result:', result);
+                
+                if (result.success) {
+                    console.log('✅ API connection successful');
+                    return true;
+                } else {
+                    console.log('❌ API connection failed:', result.message);
+                    return false;
+                }
+            } catch (error) {
+                console.error('❌ API connection test failed:', error);
+                return false;
             }
         }
 
@@ -674,6 +712,7 @@
                 return;
             }
 
+            showLoading(true);
             try {
                 for (const measurement of measurements) {
                     await apiCall('add', 'measurements', measurement);
@@ -690,16 +729,16 @@
                 
             } catch (error) {
                 showMessage(`Failed to submit measurements: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
             }
         }
 
         async function loadSerialNumbers() {
             try {
                 const result = await apiCall('get', 'serial_numbers');
-                if (result.success) {
-                    serialNumbers = result.data;
-                    updateSerialNumberSelects();
-                }
+                serialNumbers = result;
+                updateSerialNumberSelects();
             } catch (error) {
                 console.error('Failed to load serial numbers:', error);
             }
@@ -744,34 +783,33 @@
                 created_at: new Date().toISOString()
             };
 
+            showLoading(true);
             try {
-                const result = await apiCall('add', 'bom', bomData);
-                if (result.success) {
-                    showMessage('BOM data submitted successfully!', 'success');
-                    
-                    // Reset form
-                    document.getElementById('bomPartNo').value = '';
-                    document.getElementById('bomSerialNumber').value = '';
-                    document.getElementById('bomAssemblySerialNumber').value = '';
-                } else {
-                    showMessage(`Failed to submit BOM: ${result.message}`, 'error');
-                }
+                await apiCall('add', 'bom', bomData);
+                showMessage('BOM data submitted successfully!', 'success');
+                
+                // Reset form
+                document.getElementById('bomPartNo').value = '';
+                document.getElementById('bomSerialNumber').value = '';
+                document.getElementById('bomAssemblySerialNumber').value = '';
+                
             } catch (error) {
                 showMessage(`Failed to submit BOM: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
             }
         }
 
         // BOM Tree functionality
         async function loadBOMTree() {
+            showLoading(true);
             try {
                 const result = await apiCall('get', 'bom_tree');
-                if (result.success) {
-                    displayBOMTree(result.data);
-                } else {
-                    showMessage(`Failed to load BOM tree: ${result.message}`, 'error');
-                }
+                displayBOMTree(result);
             } catch (error) {
                 showMessage(`Failed to load BOM tree: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
             }
         }
 
@@ -848,15 +886,14 @@
         }
 
         async function loadMeasurementsForSerial(serialNumber) {
+            showLoading(true);
             try {
                 const result = await apiCall('get', 'measurements', { serial_number: serialNumber });
-                if (result.success) {
-                    displayMeasurements(serialNumber, result.data);
-                } else {
-                    showMessage(`Failed to load measurements: ${result.message}`, 'error');
-                }
+                displayMeasurements(serialNumber, result);
             } catch (error) {
                 showMessage(`Failed to load measurements: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
             }
         }
 
@@ -914,22 +951,21 @@
                 para_value: paramValue
             };
 
+            showLoading(true);
             try {
-                const result = await apiCall('update', 'measurements', updateData);
-                if (result.success) {
-                    showMessage('Measurement updated successfully!', 'success');
-                    closeModal();
-                    
-                    // Reload measurements
-                    const currentSerial = document.getElementById('currentSerialNumber').textContent;
-                    if (currentSerial) {
-                        loadMeasurementsForSerial(currentSerial);
-                    }
-                } else {
-                    showMessage(`Failed to update measurement: ${result.message}`, 'error');
+                await apiCall('update', 'measurements', updateData);
+                showMessage('Measurement updated successfully!', 'success');
+                closeModal();
+                
+                // Reload measurements
+                const currentSerial = document.getElementById('currentSerialNumber').textContent;
+                if (currentSerial) {
+                    loadMeasurementsForSerial(currentSerial);
                 }
             } catch (error) {
                 showMessage(`Failed to update measurement: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
             }
         }
 
@@ -938,26 +974,31 @@
                 return;
             }
 
+            showLoading(true);
             try {
-                const result = await apiCall('delete', 'measurements', { id: id });
-                if (result.success) {
-                    showMessage('Measurement deleted successfully!', 'success');
-                    
-                    // Reload measurements
-                    const currentSerial = document.getElementById('currentSerialNumber').textContent;
-                    if (currentSerial) {
-                        loadMeasurementsForSerial(currentSerial);
-                    }
-                } else {
-                    showMessage(`Failed to delete measurement: ${result.message}`, 'error');
+                await apiCall('delete', 'measurements', { id: id });
+                showMessage('Measurement deleted successfully!', 'success');
+                
+                // Reload measurements
+                const currentSerial = document.getElementById('currentSerialNumber').textContent;
+                if (currentSerial) {
+                    loadMeasurementsForSerial(currentSerial);
                 }
             } catch (error) {
                 showMessage(`Failed to delete measurement: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
             }
         }
 
         // Initialize
-        window.addEventListener('load', () => {
+        window.addEventListener('load', async () => {
+            // Test API connection first
+            const isConnected = await testApiConnection();
+            if (!isConnected) {
+                showMessage('⚠️ Warning: API connection failed. Please check Google Apps Script deployment.', 'error');
+            }
+            
             loadSerialNumbers();
             
             // Close modal when clicking outside
