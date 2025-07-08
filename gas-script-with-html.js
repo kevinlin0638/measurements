@@ -151,7 +151,7 @@ function addBomData(data) {
       sheet = spreadsheet.insertSheet(BOM_SHEET_NAME);
       // Set header row
       sheet.getRange(1, 1, 1, 5).setValues([
-        ['id', 'part_no', 'serial_number', 'assembly_serial_number', 'created_at']
+        ['id', 'part_no', 'serial_number', 'sub_assembly_serial_number', 'created_at']
       ]);
     }
     
@@ -164,7 +164,7 @@ function addBomData(data) {
       nextId,
       data.part_no,
       data.serial_number,
-      data.assembly_serial_number || '',
+      data.sub_assembly_serial_number || '',
       data.created_at
     ];
     
@@ -196,7 +196,7 @@ function addBomDataIfNotExists(data) {
       sheet = spreadsheet.insertSheet(BOM_SHEET_NAME);
       // Set header row
       sheet.getRange(1, 1, 1, 5).setValues([
-        ['id', 'part_no', 'serial_number', 'assembly_serial_number', 'created_at']
+        ['id', 'part_no', 'serial_number', 'sub_assembly_serial_number', 'created_at']
       ]);
     }
     
@@ -208,10 +208,10 @@ function addBomDataIfNotExists(data) {
       
       // Check for existing relationship
       const existingRelationship = dataRows.find(row => {
-        const [id, part_no, serial_number, assembly_serial_number, created_at] = row;
+        const [id, part_no, serial_number, sub_assembly_serial_number, created_at] = row;
         return part_no === data.part_no && 
                serial_number === data.serial_number && 
-               assembly_serial_number === data.assembly_serial_number;
+               sub_assembly_serial_number === data.sub_assembly_serial_number;
       });
       
       if (existingRelationship) {
@@ -224,7 +224,7 @@ function addBomDataIfNotExists(data) {
             id: existingRelationship[0],
             part_no: existingRelationship[1],
             serial_number: existingRelationship[2],
-            assembly_serial_number: existingRelationship[3],
+            sub_assembly_serial_number: existingRelationship[3],
             created_at: existingRelationship[4]
           }
         };
@@ -240,7 +240,7 @@ function addBomDataIfNotExists(data) {
       nextId,
       data.part_no,
       data.serial_number,
-      data.assembly_serial_number || '',
+      data.sub_assembly_serial_number || '',
       data.created_at
     ];
     
@@ -390,21 +390,22 @@ function getBomTree() {
   try {
     const bomData = getBomData();
     
-    // Build tree structure
+    // Build tree structure where parent contains children as sub_assembly_serial_number
     const tree = {};
     const serialToPartMap = {};
+    const childSerials = new Set(); // Track which serial numbers are children
     
     // Build serial number to part number mapping
     bomData.forEach(item => {
       serialToPartMap[item.serial_number] = item.part_no;
     });
     
-    // Build tree structure
+    // First pass: Create nodes for all parts
     bomData.forEach(item => {
       const partNo = item.part_no;
       const serialNumber = item.serial_number;
-      const assemblySerialNumber = item.assembly_serial_number;
       
+      // Create node for this part if it doesn't exist
       if (!tree[partNo]) {
         tree[partNo] = {
           part_no: partNo,
@@ -417,31 +418,44 @@ function getBomTree() {
       if (!tree[partNo].serial_numbers.includes(serialNumber)) {
         tree[partNo].serial_numbers.push(serialNumber);
       }
+    });
+    
+    // Second pass: Build hierarchy - parent contains children
+    bomData.forEach(item => {
+      const partNo = item.part_no;
+      const subAssemblySerialNumber = item.sub_assembly_serial_number;
       
-      // Handle assembly relationships
-      if (assemblySerialNumber && serialToPartMap[assemblySerialNumber]) {
-        const assemblyPartNo = serialToPartMap[assemblySerialNumber];
+      if (subAssemblySerialNumber && serialToPartMap[subAssemblySerialNumber]) {
+        const childPartNo = serialToPartMap[subAssemblySerialNumber];
         
-        if (!tree[assemblyPartNo]) {
-          tree[assemblyPartNo] = {
-            part_no: assemblyPartNo,
+        // Mark this serial number as a child
+        childSerials.add(subAssemblySerialNumber);
+        
+        // Ensure parent node exists
+        if (!tree[partNo]) {
+          tree[partNo] = {
+            part_no: partNo,
             serial_numbers: [],
             children: {}
           };
         }
         
-        // Add current part as child of assembly part
-        tree[assemblyPartNo].children[partNo] = tree[partNo];
+        // Add child part to parent
+        if (tree[childPartNo]) {
+          tree[partNo].children[childPartNo] = {
+            part_no: tree[childPartNo].part_no,
+            serial_numbers: [...tree[childPartNo].serial_numbers],
+            children: { ...tree[childPartNo].children }
+          };
+        }
       }
     });
     
-    // Remove child parts from root level
-    bomData.forEach(item => {
-      if (item.assembly_serial_number && serialToPartMap[item.assembly_serial_number]) {
-        const assemblyPartNo = serialToPartMap[item.assembly_serial_number];
-        if (tree[assemblyPartNo] && tree[assemblyPartNo].children[item.part_no]) {
-          delete tree[item.part_no];
-        }
+    // Third pass: Remove child parts from root level
+    childSerials.forEach(serialNumber => {
+      const childPartNo = serialToPartMap[serialNumber];
+      if (childPartNo) {
+        delete tree[childPartNo];
       }
     });
     

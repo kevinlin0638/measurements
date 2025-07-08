@@ -616,13 +616,13 @@
                     </div>
                     
                     <div class="form-group">
-                        <label for="assemblySerialNumbers">Assembly Serial Numbers (Multiple Selection)</label>
+                        <label for="subAssemblySerialNumbers">SubAssembly Serial Numbers (Multiple Selection)</label>
                         <div class="multi-select-container">
-                            <input type="text" id="assemblySerialSearch" class="multi-select-search" placeholder="Search and select assembly serial numbers..." autocomplete="off">
-                            <div id="assemblySerialDropdown" class="multi-select-dropdown">
+                            <input type="text" id="subAssemblySerialSearch" class="multi-select-search" placeholder="Search and select subassembly serial numbers..." autocomplete="off">
+                            <div id="subAssemblySerialDropdown" class="multi-select-dropdown">
                                 <div class="multi-select-option">Loading...</div>
                             </div>
-                            <div id="assemblySerialTags" class="multi-select-tags"></div>
+                            <div id="subAssemblySerialTags" class="multi-select-tags"></div>
                         </div>
                         <small style="color: #666; font-size: 0.9em; margin-top: 5px; display: block;">
                             Type to search, click to select/deselect items
@@ -682,10 +682,10 @@
         </div>
     </div>
 
-    <!-- Loading indicator (for secondary actions) -->
-    <div id="loading" class="loading" style="position: fixed; top: 20px; right: 20px; z-index: 2000; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+    <!-- Loading indicator -->
+    <div id="loading" class="loading" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2000; background: rgba(255, 255, 255, 0.95); padding: 30px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); backdrop-filter: blur(4px); border: 1px solid rgba(102, 126, 234, 0.2);">
         <div class="spinner"></div>
-        <p>Processing...</p>
+        <p style="margin-top: 15px; color: #333; font-weight: 500;">Processing...</p>
     </div>
 
     <!-- Edit Modal -->
@@ -709,7 +709,7 @@
     <script>
         let currentEditId = null;
         let serialNumbers = [];
-        let selectedAssemblySerials = [];
+        let selectedSubAssemblySerials = [];
         let multiSelectInitialized = false;
 
         // Tab switching
@@ -876,7 +876,7 @@
         async function submitEnhancedMeasurements() {
             const partNo = document.getElementById('partNo').value.trim();
             const serialNumber = document.getElementById('serialNumber').value.trim();
-            const assemblySerialNumbers = selectedAssemblySerials.filter(sn => sn !== '');
+            const subAssemblySerialNumbers = selectedSubAssemblySerials.filter(sn => sn !== '');
 
             if (!partNo || !serialNumber) {
                 showInlineStatus('submitStatus', 'Please enter part number and serial number', 'error');
@@ -901,16 +901,17 @@
             }
 
             const hasMeasurements = measurements.length > 0;
-            const hasBomLinks = assemblySerialNumbers.length > 0;
+            const hasBomLinks = true; // Always create BOM record when part number and serial number are provided
 
             if (!hasMeasurements && !hasBomLinks) {
-                showInlineStatus('submitStatus', 'Please enter at least one measurement or select assembly serial numbers for BOM linking', 'error');
+                showInlineStatus('submitStatus', 'Please enter at least one measurement parameter', 'error');
                 return;
             }
 
             // Disable form and show loading
             setFormDisabled('measurementForm', true);
             showInlineStatus('submitStatus', 'Processing data...', 'loading');
+            showLoading(true);
 
             try {
                 let successMessage = '';
@@ -924,18 +925,21 @@
                     successMessage = `${measurements.length} measurement(s) submitted successfully!`;
                 }
                 
-                // Step 2: Create BOM links for each selected assembly serial number
+                // Step 2: Create BOM links - always create at least one BOM record
                 let bomLinksCreated = 0;
                 let bomLinksSkipped = 0;
                 
                 if (hasBomLinks) {
-                    showInlineStatus('submitStatus', `Processing ${assemblySerialNumbers.length} BOM link(s)...`, 'loading');
+                    // If no subassembly serial numbers selected, create one BOM record with null subassembly
+                    const bomTargets = subAssemblySerialNumbers.length > 0 ? subAssemblySerialNumbers : [null];
                     
-                    for (const assemblySerialNumber of assemblySerialNumbers) {
+                    showInlineStatus('submitStatus', `Processing BOM record(s)...`, 'loading');
+                    
+                    for (const subAssemblySerialNumber of bomTargets) {
                         const bomData = {
                             part_no: partNo,
                             serial_number: serialNumber,
-                            assembly_serial_number: assemblySerialNumber,
+                            sub_assembly_serial_number: subAssemblySerialNumber,
                             created_at: new Date().toISOString()
                         };
                         
@@ -947,7 +951,7 @@
                                 bomLinksSkipped++;
                             }
                         } catch (error) {
-                            console.warn(`Failed to create BOM link for ${assemblySerialNumber}:`, error);
+                            console.warn(`Failed to create BOM record for ${subAssemblySerialNumber || 'standalone'}:`, error);
                             bomLinksSkipped++;
                         }
                     }
@@ -955,23 +959,44 @@
                     // Add BOM success message
                     if (bomLinksCreated > 0 || bomLinksSkipped > 0) {
                         if (successMessage) successMessage += ' ';
-                        if (bomLinksCreated > 0) {
-                            successMessage += `${bomLinksCreated} BOM link(s) created.`;
-                        }
-                        if (bomLinksSkipped > 0) {
-                            successMessage += ` ${bomLinksSkipped} BOM link(s) already existed.`;
+                        if (subAssemblySerialNumbers.length > 0) {
+                            // Has subassembly links
+                            if (bomLinksCreated > 0) {
+                                successMessage += `${bomLinksCreated} BOM link(s) created.`;
+                            }
+                            if (bomLinksSkipped > 0) {
+                                successMessage += ` ${bomLinksSkipped} BOM link(s) already existed.`;
+                            }
+                        } else {
+                            // Standalone part (no subassembly)
+                            if (bomLinksCreated > 0) {
+                                successMessage += `Standalone BOM record created.`;
+                            }
+                            if (bomLinksSkipped > 0) {
+                                successMessage += `Standalone BOM record already existed.`;
+                            }
                         }
                     }
                 }
                 
                 // If only BOM links and no measurements
                 if (!hasMeasurements && hasBomLinks) {
-                    if (bomLinksCreated > 0 && bomLinksSkipped > 0) {
-                        successMessage = `BOM links processed: ${bomLinksCreated} created, ${bomLinksSkipped} already existed.`;
-                    } else if (bomLinksCreated > 0) {
-                        successMessage = `${bomLinksCreated} BOM link(s) created successfully.`;
-                    } else if (bomLinksSkipped > 0) {
-                        successMessage = `${bomLinksSkipped} BOM link(s) already existed.`;
+                    if (subAssemblySerialNumbers.length > 0) {
+                        // Has subassembly links
+                        if (bomLinksCreated > 0 && bomLinksSkipped > 0) {
+                            successMessage = `BOM links processed: ${bomLinksCreated} created, ${bomLinksSkipped} already existed.`;
+                        } else if (bomLinksCreated > 0) {
+                            successMessage = `${bomLinksCreated} BOM link(s) created successfully.`;
+                        } else if (bomLinksSkipped > 0) {
+                            successMessage = `${bomLinksSkipped} BOM link(s) already existed.`;
+                        }
+                    } else {
+                        // Standalone part (no subassembly)
+                        if (bomLinksCreated > 0) {
+                            successMessage = `Standalone BOM record created successfully.`;
+                        } else if (bomLinksSkipped > 0) {
+                            successMessage = `Standalone BOM record already existed.`;
+                        }
                     }
                 }
                 
@@ -982,10 +1007,10 @@
                 document.getElementById('serialNumber').value = '';
                 
                 // Reset multi-select
-                const searchInput = document.getElementById('assemblySerialSearch');
-                const dropdown = document.getElementById('assemblySerialDropdown');
+                const searchInput = document.getElementById('subAssemblySerialSearch');
+                const dropdown = document.getElementById('subAssemblySerialDropdown');
                 searchInput.value = '';
-                selectedAssemblySerials = [];
+                selectedSubAssemblySerials = [];
                 updateTags();
                 dropdown.querySelectorAll('.multi-select-option').forEach(option => {
                     option.classList.remove('selected');
@@ -1013,6 +1038,7 @@
             } finally {
                 // Re-enable form
                 setFormDisabled('measurementForm', false);
+                showLoading(false);
             }
         }
 
@@ -1047,14 +1073,14 @@
 
         // Initialize multi-select functionality
         function initializeMultiSelect() {
-            const searchInput = document.getElementById('assemblySerialSearch');
-            const dropdown = document.getElementById('assemblySerialDropdown');
-            const tagsContainer = document.getElementById('assemblySerialTags');
+            const searchInput = document.getElementById('subAssemblySerialSearch');
+            const dropdown = document.getElementById('subAssemblySerialDropdown');
+            const tagsContainer = document.getElementById('subAssemblySerialTags');
             
             // Clear existing content
             dropdown.innerHTML = '';
             tagsContainer.innerHTML = '';
-            selectedAssemblySerials = [];
+            selectedSubAssemblySerials = [];
             dropdown.classList.remove('show');
             
             // Add serial numbers to dropdown
@@ -1136,11 +1162,24 @@
             if (!multiSelectInitialized) {
                 document.addEventListener('click', function(event) {
                     const multiSelectContainer = document.querySelector('.multi-select-container');
-                    if (!multiSelectContainer.contains(event.target)) {
-                        const dropdown = document.getElementById('assemblySerialDropdown');
+                    const dropdown = document.getElementById('subAssemblySerialDropdown');
+                    if (!multiSelectContainer || !multiSelectContainer.contains(event.target)) {
                         dropdown.classList.remove('show');
                     }
                 });
+                
+                // Also close when input loses focus (but not when clicking dropdown)
+                searchInput.addEventListener('blur', function(event) {
+                    // Add small delay to allow dropdown clicks to register
+                    setTimeout(() => {
+                        const dropdown = document.getElementById('subAssemblySerialDropdown');
+                        // Only hide if the focus didn't move to the dropdown
+                        if (!dropdown.contains(document.activeElement)) {
+                            dropdown.classList.remove('show');
+                        }
+                    }, 150);
+                });
+                
                 multiSelectInitialized = true;
             }
             
@@ -1150,16 +1189,16 @@
 
         // Toggle selection of serial number
         function toggleSelection(serialNumber) {
-            const dropdown = document.getElementById('assemblySerialDropdown');
+            const dropdown = document.getElementById('subAssemblySerialDropdown');
             const option = dropdown.querySelector(`[data-value="${serialNumber}"]`);
             
-            if (selectedAssemblySerials.includes(serialNumber)) {
+            if (selectedSubAssemblySerials.includes(serialNumber)) {
                 // Remove from selection
-                selectedAssemblySerials = selectedAssemblySerials.filter(sn => sn !== serialNumber);
+                selectedSubAssemblySerials = selectedSubAssemblySerials.filter(sn => sn !== serialNumber);
                 option.classList.remove('selected');
             } else {
                 // Add to selection
-                selectedAssemblySerials.push(serialNumber);
+                selectedSubAssemblySerials.push(serialNumber);
                 option.classList.add('selected');
             }
             
@@ -1168,12 +1207,12 @@
 
         // Update tags display
         function updateTags() {
-            const tagsContainer = document.getElementById('assemblySerialTags');
-            const searchInput = document.getElementById('assemblySerialSearch');
+            const tagsContainer = document.getElementById('subAssemblySerialTags');
+            const searchInput = document.getElementById('subAssemblySerialSearch');
             
             tagsContainer.innerHTML = '';
             
-            selectedAssemblySerials.forEach(serialNumber => {
+            selectedSubAssemblySerials.forEach(serialNumber => {
                 const tag = document.createElement('div');
                 tag.className = 'multi-select-tag';
                 tag.innerHTML = `
@@ -1184,10 +1223,10 @@
             });
             
             // Update search input placeholder
-            if (selectedAssemblySerials.length > 0) {
-                searchInput.placeholder = `${selectedAssemblySerials.length} selected - Search for more...`;
+            if (selectedSubAssemblySerials.length > 0) {
+                searchInput.placeholder = `${selectedSubAssemblySerials.length} selected - Search for more...`;
             } else if (Array.isArray(serialNumbers) && serialNumbers.length > 0) {
-                searchInput.placeholder = 'Search and select assembly serial numbers...';
+                searchInput.placeholder = 'Search and select subassembly serial numbers...';
             } else {
                 searchInput.placeholder = 'No serial numbers available';
             }
@@ -1203,6 +1242,7 @@
             // Disable button and show loading
             setButtonDisabled('loadBomBtn', true);
             showInlineStatus('loadBomStatus', 'Loading BOM tree...', 'loading');
+            showLoading(true);
             
             try {
                 const result = await apiCall('get', 'bom_tree');
@@ -1213,6 +1253,7 @@
             } finally {
                 // Re-enable button
                 setButtonDisabled('loadBomBtn', false);
+                showLoading(false);
             }
         }
 
@@ -1459,4 +1500,5 @@
         });
     </script>
 </body>
+</html> 
 </html> 
