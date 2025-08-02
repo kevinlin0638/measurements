@@ -74,6 +74,8 @@ function handleApiCall(requestData) {
           result = getMeasurementsData(data?.serial_number);
         } else if (table === 'bom_tree') {
           result = getBomTree();
+        } else if (table === 'bom_tree_by_serial') {
+          result = getBomTreeBySerial();
         } else if (table === 'serial_numbers') {
           result = getSerialNumbers();
         } else {
@@ -464,6 +466,72 @@ function getBomTree() {
   } catch (error) {
     console.error('Error getting BOM tree:', error);
     throw new Error('Unable to retrieve BOM tree: ' + error.message);
+  }
+}
+
+/**
+ * Get BOM tree structure organized by serial numbers
+ */
+function getBomTreeBySerial() {
+  try {
+    const bomData = getBomData();
+    
+    if (!bomData || bomData.length === 0) {
+      return {};
+    }
+    
+    // Build tree structure where each serial number is a node
+    const tree = {};
+    const serialToPartMap = {};
+    const childSerials = new Set(); // Track which serial numbers are children
+    
+    // Build serial number to part number mapping
+    bomData.forEach(item => {
+      serialToPartMap[item.serial_number] = item.part_no;
+    });
+    
+    // Create all nodes first
+    bomData.forEach(item => {
+      const serialNumber = item.serial_number;
+      const partNo = item.part_no;
+      
+      if (!tree[serialNumber]) {
+        tree[serialNumber] = {
+          serial_number: serialNumber,
+          part_no: partNo,
+          children: {}
+        };
+      }
+    });
+    
+    // Build parent-child relationships
+    bomData.forEach(item => {
+      const parentSerial = item.serial_number;
+      const childSerial = item.sub_assembly_serial_number;
+      
+      if (childSerial && childSerial !== '' && tree[childSerial]) {
+        // Mark this serial as a child
+        childSerials.add(childSerial);
+        
+        // Add child to parent
+        tree[parentSerial].children[childSerial] = {
+          serial_number: tree[childSerial].serial_number,
+          part_no: tree[childSerial].part_no,
+          children: { ...tree[childSerial].children }
+        };
+      }
+    });
+    
+    // Remove child serials from root level to avoid duplication
+    childSerials.forEach(childSerial => {
+      delete tree[childSerial];
+    });
+    
+    return tree;
+    
+  } catch (error) {
+    console.error('Error getting BOM tree by serial:', error);
+    throw new Error('Unable to retrieve BOM tree by serial: ' + error.message);
   }
 }
 

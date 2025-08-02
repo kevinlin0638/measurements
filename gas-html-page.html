@@ -1002,24 +1002,7 @@
                 
                 showInlineStatus('submitStatus', successMessage, 'success');
                 
-                // Reset form
-                document.getElementById('partNo').value = '';
-                document.getElementById('serialNumber').value = '';
-                
-                // Reset multi-select
-                const searchInput = document.getElementById('subAssemblySerialSearch');
-                const dropdown = document.getElementById('subAssemblySerialDropdown');
-                searchInput.value = '';
-                selectedSubAssemblySerials = [];
-                updateTags();
-                dropdown.querySelectorAll('.multi-select-option').forEach(option => {
-                    option.classList.remove('selected');
-                });
-                dropdown.classList.remove('show');
-                
-                // Reset measurement inputs
-                document.querySelectorAll('.param-name').forEach(input => input.value = '');
-                document.querySelectorAll('.param-value').forEach(input => input.value = '');
+                // Don't reset form - keep user data for easier consecutive entries
                 
                 // Clear status after a delay
                 setTimeout(() => {
@@ -1245,7 +1228,7 @@
             showLoading(true);
             
             try {
-                const result = await apiCall('get', 'bom_tree');
+                const result = await apiCall('get', 'bom_tree_by_serial');
                 displayBOMTree(result);
                 // displayBOMTree will handle the success message
             } catch (error) {
@@ -1268,17 +1251,17 @@
                 return;
             }
 
-            const partCount = Object.keys(treeData).length;
-            Object.keys(treeData).forEach(partNo => {
-                const partNode = createTreeNode(treeData[partNo]);
-                container.appendChild(partNode);
+            const serialCount = Object.keys(treeData).length;
+            Object.keys(treeData).forEach(serialNumber => {
+                const serialNode = createTreeNode(treeData[serialNumber]);
+                container.appendChild(serialNode);
             });
             
             // Update the success message with more details
             const statusContainer = document.getElementById('loadBomStatus');
             if (statusContainer) {
                 setTimeout(() => {
-                    showInlineStatus('loadBomStatus', `BOM tree loaded: ${partCount} part(s) found`, 'success');
+                    showInlineStatus('loadBomStatus', `BOM tree loaded: ${serialCount} serial number(s) found`, 'success');
                 }, 100);
             }
         }
@@ -1289,36 +1272,34 @@
 
             const item = document.createElement('div');
             item.className = 'tree-item';
+            const childrenCount = Object.keys(nodeData.children || {}).length;
             item.innerHTML = `
-                <span class="tree-icon">📦</span>
-                <strong>${nodeData.part_no}</strong>
-                <span style="margin-left: 10px; opacity: 0.7;">(${nodeData.serial_numbers.length} serial numbers)</span>
+                <span class="tree-icon">🔗</span>
+                <strong>${nodeData.serial_number}</strong>
+                <span style="margin-left: 10px; opacity: 0.7;">(Part: ${nodeData.part_no})</span>
+                ${childrenCount > 0 ? `<span style="margin-left: 10px; opacity: 0.5;">- ${childrenCount} subassembly(s)</span>` : ''}
             `;
 
-            item.onclick = () => toggleTreeNode(node, nodeData);
+            // Make the serial number clickable to load measurements
+            item.onclick = (e) => {
+                e.stopPropagation();
+                if (childrenCount > 0) {
+                    toggleTreeNode(node, nodeData);
+                }
+                loadMeasurementsForSerial(nodeData.serial_number);
+            };
+            
+            // Add hover effect to indicate it's clickable
+            item.style.cursor = 'pointer';
+            
             node.appendChild(item);
 
-            // Serial numbers
-            const serialNumbers = document.createElement('div');
-            serialNumbers.className = 'serial-numbers';
-            nodeData.serial_numbers.forEach(sn => {
-                const serialItem = document.createElement('div');
-                serialItem.className = 'serial-item';
-                serialItem.innerHTML = `🔗 ${sn}`;
-                serialItem.onclick = (e) => {
-                    e.stopPropagation();
-                    loadMeasurementsForSerial(sn);
-                };
-                serialNumbers.appendChild(serialItem);
-            });
-            node.appendChild(serialNumbers);
-
-            // Children
-            if (Object.keys(nodeData.children).length > 0) {
+            // Children (subassemblies)
+            if (Object.keys(nodeData.children || {}).length > 0) {
                 const children = document.createElement('div');
                 children.className = 'tree-children';
-                Object.keys(nodeData.children).forEach(childPartNo => {
-                    const childNode = createTreeNode(nodeData.children[childPartNo]);
+                Object.keys(nodeData.children).forEach(childSerialNumber => {
+                    const childNode = createTreeNode(nodeData.children[childSerialNumber]);
                     children.appendChild(childNode);
                 });
                 node.appendChild(children);
@@ -1328,15 +1309,14 @@
         }
 
         function toggleTreeNode(node, nodeData) {
-            const serialNumbers = node.querySelector('.serial-numbers');
             const children = node.querySelector('.tree-children');
 
-            if (serialNumbers.style.display === 'none') {
-                serialNumbers.style.display = 'block';
-                if (children) children.style.display = 'block';
-            } else {
-                serialNumbers.style.display = 'none';
-                if (children) children.style.display = 'none';
+            if (children) {
+                if (children.style.display === 'none' || children.style.display === '') {
+                    children.style.display = 'block';
+                } else {
+                    children.style.display = 'none';
+                }
             }
         }
 
