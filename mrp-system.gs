@@ -29,7 +29,7 @@ function doGet(e) {
   console.log('=== doGet called - serving MRP HTML page ===');
   return HtmlService.createTemplateFromFile('MRP_HTML')
     .evaluate()
-    .setTitle('MRP 物料需求規劃系統')
+    .setTitle('MRP System')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
@@ -671,10 +671,23 @@ function saveCurrentPeriodDataToSheets() {
       return { success: false, message: 'Products sheet not found' };
     }
     
+    // Read current period from Settings sheet
+    let currentPeriod = 1; // Default value
+    const settingsSheet = spreadsheet.getSheetByName('Settings');
+    if (settingsSheet) {
+      const settingsData = settingsSheet.getDataRange().getValues();
+      for (let i = 0; i < settingsData.length; i++) {
+        if (settingsData[i][0] && settingsData[i][0].toString().toLowerCase().includes('current period')) {
+          currentPeriod = parseInt(settingsData[i][1]) || 1;
+          break;
+        }
+      }
+    }
+    
     // Save product data to Products sheet (new format: product name, period, inventory)
     const productData = [
       globalMRPSystem.currentProduct,
-      1, // Current period fixed as 1
+      currentPeriod, // Read from Settings sheet
       globalMRPSystem.initialInventory
     ];
     
@@ -683,7 +696,7 @@ function saveCurrentPeriodDataToSheets() {
     let productRow = -1;
     
     for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === globalMRPSystem.currentProduct && data[i][1] === 1) {
+      if (data[i][0] === globalMRPSystem.currentProduct && data[i][1] === currentPeriod) {
         productRow = i + 1;
         break;
       }
@@ -706,7 +719,7 @@ function saveCurrentPeriodDataToSheets() {
     // Prepare new BOM data (new format: product name, period, component name, quantity, supplier)
     const newBomData = globalMRPSystem.components.map(comp => [
       globalMRPSystem.currentProduct,
-      1, // Current period fixed as 1
+      currentPeriod, // Read from Settings sheet
       comp.name,
       comp.quantity,
       comp.supplier
@@ -753,14 +766,27 @@ function loadProductResultsFromSheets(productName) {
     console.log('Products data found:', productsData.length, 'rows');
     let productData = null;
     
-    // Find specified product (period 1)
+    // Read current period from Settings sheet
+    let currentPeriod = 1; // Default value
+    const settingsSheet = spreadsheet.getSheetByName('Settings');
+    if (settingsSheet) {
+      const settingsData = settingsSheet.getDataRange().getValues();
+      for (let i = 0; i < settingsData.length; i++) {
+        if (settingsData[i][0] && settingsData[i][0].toString().toLowerCase().includes('current period')) {
+          currentPeriod = parseInt(settingsData[i][1]) || 1;
+          break;
+        }
+      }
+    }
+    
+    // Find specified product (current period)
     for (let i = 1; i < productsData.length; i++) {
       const sheetProductName = String(productsData[i][0]).trim(); // Ensure it's a string and remove spaces
       const sheetPeriod = productsData[i][1]; // Period
       
-      console.log(`Checking row ${i}: Sheet Product: '${sheetProductName}' (type: ${typeof productsData[i][0]}), Query Product: '${productName}' (type: ${typeof productName}), Sheet Period: ${sheetPeriod}`);
+      console.log(`Checking row ${i}: Sheet Product: '${sheetProductName}' (type: ${typeof productsData[i][0]}), Query Product: '${productName}' (type: ${typeof productName}), Sheet Period: ${sheetPeriod}, Current Period: ${currentPeriod}`);
       
-      if (sheetProductName === productName.trim() && sheetPeriod === 1) {
+      if (sheetProductName === productName.trim() && sheetPeriod === currentPeriod) {
         productData = productsData[i];
         console.log('Found product data:', productData);
         break;
@@ -784,7 +810,7 @@ function loadProductResultsFromSheets(productName) {
     const components = [];
     
     for (let i = 1; i < bomData.length; i++) {
-      if (bomData[i][0] === productName && bomData[i][1] === 1) {
+      if (bomData[i][0] === productName && bomData[i][1] === currentPeriod) {
         components.push({
           name: bomData[i][2], // Component name
           quantity: parseInt(bomData[i][3]) || 0, // Quantity
@@ -802,7 +828,7 @@ function loadProductResultsFromSheets(productName) {
     // Calculate total demand: sum of quantities where this product is used as a component
     let totalDemand = 0;
     for (let i = 1; i < bomData.length; i++) {
-      if (bomData[i][2] === productName && bomData[i][1] === 1) {
+      if (bomData[i][2] === productName && bomData[i][1] === currentPeriod) {
         totalDemand += parseInt(bomData[i][3]) || 0;
       }
     }
